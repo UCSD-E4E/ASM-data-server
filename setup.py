@@ -5,8 +5,10 @@ setup(name='ASM-DataServer',
       description="Aye-Aye Sleep Monitoring Data Server",
       author="UC San Diego Engineers for Exploration",
       author_email="e4e@eng.ucsd.edu",
-      packeages=['DataServer'],
+      packages=['DataServer'],
+      scripts=['runServer.py'],
       install_requires=[
-          'PyYAML'
+          'PyYAML',
+          'asm_protocol'
       ]
       )
