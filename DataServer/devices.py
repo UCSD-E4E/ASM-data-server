@@ -2,6 +2,7 @@ from typing import Optional
 import yaml
 import uuid
 import enum
+import datetime as dt
 
 
 class DeviceType(enum.Enum):
@@ -20,11 +21,16 @@ class Device:
                                 f'{type(kwargs["desc"])} instead')
             self.desc = kwargs['desc']
 
+        self._last_comms: Optional[dt.datetime]
+
     def getDevicePath(self):
         if self.desc:
             return f'{self.uuid}_{self.desc.replace(" ", "_")}'
         else:
             return f'{self.uuid}'
+
+    def setLastHeardFrom(self, t: dt.datetime):
+        self._last_comms = t
 
 
 class DeviceTree:

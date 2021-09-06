@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 from DataServer.server import Server
 
 if __name__ == "__main__":
@@ -6,4 +7,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     server = Server('config.yaml', 'devices.yaml')
-    server.run()
+    asyncio.run(server.run())

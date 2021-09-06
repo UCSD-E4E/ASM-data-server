@@ -1,12 +1,17 @@
-from typing import Dict, Union
-from DataServer import devices
-import yaml
+import asyncio
+import datetime as dt
 import os
 import socket
-import threading
 import uuid
+from asyncio.streams import StreamReader, StreamWriter
+from threading import Event
+from typing import Callable, Dict, List, Optional, Type, Union
+
+import yaml
 from asm_protocol import codec
-import select
+
+from DataServer import devices
+
 
 class ServerConfig:
     CONFIG_TYPES = {
@@ -39,44 +44,81 @@ class ServerConfig:
         self.uuid = uuid.UUID(configDict['server_uuid'])
 
 
+class ClientHandler:
+
+    def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
+                 writer: StreamWriter) -> None:
+        self.device_tree = device_tree
+        self.reader = reader
+        self.writer = writer
+        self.protocol_codec = codec.Codec()
+        self.end_event = Event()
+        self.__packet_queue = asyncio.Queue()
+
+        self._packet_handlers: Dict[Type[codec.binaryPacket],
+                                    Callable[[codec.binaryPacket], None]] = \
+            {
+                codec.E4E_Heartbeat: self.heartbeat_handler
+            }
+
+        self.client_device: Optional[devices.Device] = None
+
+    async def run(self):
+        rx = asyncio.create_task(self.command_handler())
+        tx = asyncio.create_task(self.response_sender())
+        done, pending = await asyncio.wait({rx, tx}, timeout=3600)
+
+        for task in pending:
+            task.cancel()
+
+    async def command_handler(self):
+        while not self.end_event.is_set():
+            data = await self.reader.read(65536)
+            if len(data):
+                packets = self.protocol_codec.decode(data)
+                for packet in packets:
+                    pass
+            else:
+                # Do this to unblock the response_sender
+                await self.__packet_queue.put(None)
+                self.end_event.set()
+        print('Rx closed')
+
+    async def response_sender(self):
+        while not self.end_event.is_set():
+            packet = await self.__packet_queue.get()
+            if not packet:
+                continue
+            bytes_to_send = self.protocol_codec.encode([packet])
+            self.writer.write(bytes_to_send)
+            await self.writer.drain()
+        self.writer.close()
+        print('Tx closed')
+
+    def heartbeat_handler(self, packet: codec.binaryPacket):
+        client_uuid = packet._source
+        if not self.client_device:
+            self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
+        else:
+            assert(self.client_device.uuid == client_uuid)
+        self.client_device.setLastHeardFrom(dt.datetime.now())
+
+
 class Server:
     def __init__(self, config_file: str, devices_file: str) -> None:
         self.config = ServerConfig(config_file)
         self.device_tree = devices.DeviceTree(devices_file)
         self.hostname = socket.gethostbyname('localhost')
+        self.__client_queues: List[ClientHandler] = []
 
-    def run(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            print(f"Binding to {self.hostname}:{self.config.port}")
-            s.bind((self.hostname, self.config.port))
-            s.listen()
+    async def run(self):
+        server = await asyncio.start_server(self.client_thread, self.hostname,
+                                            self.config.port)
+        async with server:
+            await server.serve_forever()
 
-            while True:
-                client_socket, client_addr = s.accept()
-                thread_args = {
-                    'client_socket': client_socket,
-                    'client_addr': client_addr
-                }
-                t = threading.Thread(target=self.client_thread, 
-                                     kwargs=thread_args)
-                t.start()
-
-    def client_thread(self, client_socket: socket.socket,
-                      client_addr):
-        run = True
-        protocol_codec = codec.Codec()
-        with client_socket:
-            client_socket.setblocking(False)
-            while run:
-                try:
-                    data = client_socket.recv(65536)
-                    if len(data):
-                        packets = protocol_codec.decode(data)
-                        print(packets)
-                except BlockingIOError:
-                    pass
-                except Exception:
-                    run = False
-                    client_socket.close()
-
-        print('Closed')
+    async def client_thread(self, reader: StreamReader, writer: StreamWriter):
+        client = ClientHandler(self.device_tree, reader, writer)
+        self.__client_queues.append(client)
+        await client.run()
+        self.__client_queues.remove(client)
