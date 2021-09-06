@@ -39,5 +39,7 @@ class DeviceTree:
             self.__tree = yaml.safe_load(stream)
 
     def getDeviceByUUID(self, uuid: uuid.UUID) -> Device:
+        if str(uuid) not in self.__tree:
+            raise RuntimeError('Device not found!')
         device_node = self.__tree[str(uuid)]
         return Device(uuid, **device_node)
