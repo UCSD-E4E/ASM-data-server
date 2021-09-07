@@ -2,11 +2,12 @@ import asyncio
 import datetime as dt
 import os
 import pathlib
-import socket
+import socketserver
 import uuid
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
-from typing import BinaryIO, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import (Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
+                    Type, Union)
 
 import yaml
 from asm_protocol import codec
@@ -60,15 +61,19 @@ class ClientHandler:
             asyncio.Queue()
 
         self._packet_handlers: Dict[Type[codec.binaryPacket],
-                                    Callable[[codec.binaryPacket], None]] = \
+                                    Callable[[codec.binaryPacket],
+                                             Awaitable[None]]] = \
             {
-                codec.E4E_Heartbeat: self.heartbeat_handler
+                codec.E4E_Heartbeat: self.heartbeat_handler,
+                codec.E4E_START_RTP_CMD: self.onRTPStart
             }
 
         self.client_device: Optional[devices.Device] = None
         self._data_endpoints: Dict[Tuple[int, int], Optional[BinaryIO]] = {}
 
         self._config = config
+
+        self.hasClient = asyncio.Event()
 
     async def run(self):
         rx = asyncio.create_task(self.command_handler())
@@ -87,13 +92,11 @@ class ClientHandler:
             data = await self.reader.read(65536)
             if len(data):
                 packets = self.protocol_codec.decode(data)
-                print(packets)
                 for packet in packets:
-                    print(packet)
                     if type(packet) in self._packet_handlers:
-                        self._packet_handlers[type(packet)](packet)
+                        await self._packet_handlers[type(packet)](packet)
                     else:
-                        print("no handler")
+                        print(f"no handler for class {type(packet)}")
             else:
                 # Do this to unblock the response_sender
                 await self.__packet_queue.put(None)
@@ -105,23 +108,63 @@ class ClientHandler:
             packet = await self.__packet_queue.get()
             if not packet:
                 continue
+            print(f'Sending {packet}')
             bytes_to_send = self.protocol_codec.encode([packet])
             self.writer.write(bytes_to_send)
             await self.writer.drain()
         self.writer.close()
         print('Tx closed')
 
-    def heartbeat_handler(self, packet: codec.binaryPacket):
-        print("Got heartbeat")
+    async def sendPacket(self, packet: codec.binaryPacket):
+        try:
+            await self.__packet_queue.put(packet)
+        except Exception:
+            print("Failed to queue packet")
+
+    async def heartbeat_handler(self, packet: codec.binaryPacket):
+        assert(isinstance(packet, codec.E4E_Heartbeat))
         client_uuid = packet._source
         if not self.client_device:
             print(f'getting client for uuid {client_uuid}')
             self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
         else:
             assert(self.client_device.uuid == client_uuid)
+        print(f"Got heartbeat from {self.client_device.uuid} "
+              f"({self.client_device.desc}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
+        self.hasClient.set()
 
-    def data_packet_handler(self, packet: codec.binaryPacket):
+    async def onRTPStart(self, packet: codec.binaryPacket):
+        print("Got RTP Start Command")
+        assert(isinstance(packet, codec.E4E_START_RTP_CMD))
+        with socketserver.TCPServer(('', 0), None) as s:
+            free_port = s.server_address[1]
+        print(f'Got port {free_port}')
+        response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
+                                           free_port)
+        proc = await self.runRTPServer(free_port)
+        await self.sendPacket(response)
+        await proc.wait()
+        print("ffmpeg shutdown")
+
+    async def runRTPServer(self, port: int):
+        await self.hasClient.wait()
+        assert(self.client_device)
+        data_dir = self._config.data_dir
+        device_path = self.client_device.getDevicePath()
+        fname = dt.datetime.now().strftime('%Y.%m.%d.%H.%M.%S.mp4')
+        file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
+        file_dir = os.path.dirname(file_path)
+        pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
+        cmd = f'ffmpeg -i tcp://@:{port}?listen {file_path}'
+        proc_out = asyncio.subprocess.PIPE
+        proc_err = asyncio.subprocess.PIPE
+        proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
+                                                     stderr=proc_err)
+        print(f'RTP Server on port {port} started outputting to {file_path}')
+        return proc
+
+    async def data_packet_handler(self, packet: codec.binaryPacket):
         if self.client_device:
             file_key = (packet._class, packet._id)
             if file_key not in self._data_endpoints:
@@ -137,8 +180,9 @@ class ClientHandler:
         device_dir = self.client_device.getDevicePath()
         data_dir = self._config.data_dir
         fname = dt.datetime.now().strftime('%Y.%m.%d.%H.%M.%S.bin')
-        file_path = os.path.abspath(os.path.join(device_dir, data_dir, fname))
-        pathlib.Path(file_path).mkdir(parents=True, exist_ok=True)
+        file_path = os.path.abspath(os.path.join(data_dir, device_dir, fname))
+        file_dir = os.path.dirname(file_path)
+        pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
         self._data_endpoints[file_key] = open(file_path, 'ab')
 
 
@@ -146,10 +190,11 @@ class Server:
     def __init__(self, config_file: str, devices_file: str) -> None:
         self.config = ServerConfig(config_file)
         self.device_tree = devices.DeviceTree(devices_file)
-        self.hostname = socket.gethostbyname('localhost')
+        self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
 
     async def run(self):
+        print(f'Connecting to {self.hostname}:{self.config.port}')
         server = await asyncio.start_server(self.client_thread, self.hostname,
                                             self.config.port)
         async with server:
