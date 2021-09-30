@@ -152,16 +152,18 @@ class ClientHandler:
         assert(self.client_device)
         data_dir = self._config.data_dir
         device_path = self.client_device.getDevicePath()
-        fname = dt.datetime.now().strftime('%Y.%m.%d.%H.%M.%S.mp4')
+        fname = '%Y.%m.%d.%H.%M.%S.mp4'
         file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
-        cmd = f'ffmpeg -i tcp://@:{port}?listen {file_path}'
+        cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
+               ' -f segment -segment_time 3600 -strftime 1 '
+               f'-reset_timestamps 1 {file_path}')
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
-        print(f'RTP Server on port {port} started outputting to {file_path}')
+        print(f'RTP Server on port {port} started outputting to {file_dir}')
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
