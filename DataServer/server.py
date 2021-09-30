@@ -13,7 +13,7 @@ import yaml
 from asm_protocol import codec
 
 from DataServer import devices
-
+import shutil
 
 class ServerConfig:
     CONFIG_TYPES = {
@@ -206,3 +206,10 @@ class Server:
         self.__client_queues.append(client)
         await client.run()
         self.__client_queues.remove(client)
+
+    def checkForServices(self):
+        self.__checkForFFMPEG()
+
+    def __checkForFFMPEG(self):
+        if shutil.which('ffmpeg') is None:
+            raise RuntimeError("Could not find ffmpeg")
