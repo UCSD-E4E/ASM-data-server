@@ -88,13 +88,14 @@ class ClientHandler:
                 fi.close()
 
     async def command_handler(self):
+        loop = asyncio.get_running_loop()
         while not self.end_event.is_set():
             data = await self.reader.read(65536)
             if len(data):
                 packets = self.protocol_codec.decode(data)
                 for packet in packets:
                     if type(packet) in self._packet_handlers:
-                        await self._packet_handlers[type(packet)](packet)
+                        loop.create_task(self._packet_handlers[type(packet)](packet))
                     else:
                         print(f"no handler for class {type(packet)}")
             else:
