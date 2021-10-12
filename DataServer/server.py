@@ -74,11 +74,11 @@ class ClientHandler:
         self._config = config
 
         self.hasClient = asyncio.Event()
-
+        
     async def run(self):
         rx = asyncio.create_task(self.command_handler())
         tx = asyncio.create_task(self.response_sender())
-        done, pending = await asyncio.wait({rx, tx}, timeout=3600)
+        done, pending = await asyncio.wait({rx, tx})
 
         for task in pending:
             task.cancel()
@@ -88,14 +88,13 @@ class ClientHandler:
                 fi.close()
 
     async def command_handler(self):
-        loop = asyncio.get_running_loop()
         while not self.end_event.is_set():
             data = await self.reader.read(65536)
             if len(data):
                 packets = self.protocol_codec.decode(data)
                 for packet in packets:
                     if type(packet) in self._packet_handlers:
-                        loop.create_task(self._packet_handlers[type(packet)](packet))
+                        asyncio.create_task(self._packet_handlers[type(packet)](packet))
                     else:
                         print(f"no handler for class {type(packet)}")
             else:
@@ -142,7 +141,7 @@ class ClientHandler:
             free_port = s.server_address[1]
         print(f'Got port {free_port}')
         response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
-                                           free_port)
+                                           free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
         await proc.wait()
@@ -152,11 +151,13 @@ class ClientHandler:
         await self.hasClient.wait()
         assert(self.client_device)
         data_dir = self._config.data_dir
+
         device_path = self.client_device.getDevicePath()
         fname = '%Y.%m.%d.%H.%M.%S.mp4'
         file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
+        
         cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
                ' -f segment -segment_time 3600 -strftime 1 '
                f'-reset_timestamps 1 {file_path}')
