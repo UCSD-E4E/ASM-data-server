@@ -19,7 +19,8 @@ class ServerConfig:
     CONFIG_TYPES = {
         'data_dir': str,
         'port': int,
-        'server_uuid': str
+        'server_uuid': str,
+        'video_increment': int
     }
 
     def __init__(self, path: str) -> None:
@@ -46,6 +47,7 @@ class ServerConfig:
 
         assert(isinstance(configDict['server_uuid'], str))
         self.uuid = uuid.UUID(configDict['server_uuid'])
+        self.video_increment_s = int(configDict['video_increment'])
 
 
 class ClientHandler:
@@ -159,7 +161,7 @@ class ClientHandler:
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
         
         cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
-               ' -f segment -segment_time 3600 -strftime 1 '
+               f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
                f'-reset_timestamps 1 {file_path}')
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
