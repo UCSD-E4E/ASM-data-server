@@ -4,3 +4,5 @@ ASM_DataServer.egg-info/
 DataServer/__pycache__/
 
 devices.yaml
+
+config.yaml
