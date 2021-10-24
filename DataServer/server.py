@@ -128,11 +128,17 @@ class ClientHandler:
         client_uuid = packet._source
         if not self.client_device:
             print(f'getting client for uuid {client_uuid}')
-            self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
+            try:
+                self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
+            except devices.DeviceNotFoundError as e:
+                newDevice = devices.Device(client_uuid, "Auto-registered device", devices.DeviceType.AUTO_REGISTERED)
+                self.device_tree.addDevice(newDevice)
+                self.client_device = newDevice
+                print(f"Added new device {newDevice}")
         else:
-            assert(self.client_device.uuid == client_uuid)
-        print(f"Got heartbeat from {self.client_device.uuid} "
-              f"({self.client_device.desc}) at {packet.timestamp}")
+            assert(self.client_device.deviceID == client_uuid)
+        print(f"Got heartbeat from {self.client_device.deviceID} "
+              f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
