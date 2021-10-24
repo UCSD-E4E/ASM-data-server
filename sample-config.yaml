@@ -11,3 +11,6 @@ port: 9000
 # 
 # This is the UUID that uniquely identifies this device.
 server_uuid: 'fda6297c-1107-11ec-bbd2-fcaa14694a7a'
+
+# This is the maximum length of video data
+video_increment: 300

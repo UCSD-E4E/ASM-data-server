@@ -1,4 +1,5 @@
 data_dir: /home/ntlhui/workspace/asm_data_dir
 port: 9000
-server_uuid: 'eff538d8-0ddb-11ec-80d8-5f5c814885d2'
+# server_uuid: 'eff538d8-0ddb-11ec-80d8-5f5c814885d2'
+server_uuid: 'd95db772-3508-11ec-93d9-54e1ad5146fa'
 video_increment: 300
