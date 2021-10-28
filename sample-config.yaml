@@ -1,0 +1,16 @@
+# This is a sample configuration for the Aye-Aye Sleep Monitoring Data Server.
+# Use this as a basis for configuring the data server for the specific server.
+
+# Local path in which to store the data hierarchy
+data_dir: /home/asm-data/nas/data
+
+# This is the primary port for the data server.
+port: 9000
+
+# Data Server UID
+# 
+# This is the UUID that uniquely identifies this device.
+server_uuid: 'fda6297c-1107-11ec-bbd2-fcaa14694a7a'
+
+# This is the maximum length of video data
+video_increment: 300
