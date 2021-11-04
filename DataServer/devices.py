@@ -5,6 +5,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
+import pathlib
 
 import yaml
 
@@ -76,6 +77,8 @@ class Device:
 class DeviceTree:
     def __init__(self, path: str):
         if not os.path.isfile(path):
+            file_dir = os.path.dirname(path)
+            pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
             with open(path, 'w') as stream:
                 yaml.safe_dump({}, stream)
         with open(path, 'r') as stream:
