@@ -16,7 +16,7 @@ usage() {
     echo "    -h            Display this message"
 }
 
-while getopts ":dp:" arg; do
+while getopts ":dp:r:" arg; do
     case $arg in
         d)
             DEBUG=1
