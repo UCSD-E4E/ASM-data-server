@@ -43,9 +43,9 @@ RUN_SERVERESC=$(echo ${RUN_SERVER} | sed 's/\//\\\//g')
 if [[ ${DEBUG} -eq 0 ]]
 then
     
-    if [ ! -f /usr/local/etc/asm_config.yaml ]
+    if [ ! -f /usr/local/etc/ASMDataServer/asm_config.yaml ]
     then
-        cp sample-config.yaml /usr/local/etc/asm_config.yaml
+        cp sample-config.yaml /usr/local/etc/ASMDataServer/asm_config.yaml
     fi
     
     cat asm_server.service | sed -e "s/python/${PYTHONESC}/g" | sed -e "s/runServer.py/${RUN_SERVERESC}/g" > /lib/systemd/system/asm_server.service
