@@ -1,6 +1,7 @@
 from __future__ import annotations
 import datetime as dt
 import enum
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
@@ -74,6 +75,9 @@ class Device:
 
 class DeviceTree:
     def __init__(self, path: str):
+        if not os.path.isfile(path):
+            with open(path, 'w') as stream:
+                yaml.safe_dump({}, stream)
         with open(path, 'r') as stream:
             tree: Optional[Dict[str, Any]] = yaml.safe_load(stream)
         self.__tree: Dict[uuid.UUID, Device] = {}

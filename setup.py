@@ -9,6 +9,7 @@ setup(name='ASM-DataServer',
       scripts=['runServer.py'],
       install_requires=[
           'PyYAML',
-          'asm_protocol'
+          'asm_protocol',
+          'appdirs'
       ]
       )
