@@ -4,7 +4,7 @@ Requires=network-online.target local-fs.target
 
 [Service]
 Type=idle
-ExecStart=python /usr/local/bin/runServer.py >> /var/log/asm_server.log 2>&1
+ExecStart=python runServer.py >> /var/log/asm_server.log 2>&1
 
 [Install]
 WantedBy=multi-user.target
