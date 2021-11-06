@@ -10,8 +10,12 @@ if __name__ == "__main__":
 
     site_config = os.path.join(appdirs.site_config_dir(
         app_name, app_author), 'asm_config.yaml')
+    user_config = os.path.join(appdirs.user_config_dir(
+        app_name, app_author), 'asm_config.yaml')
     if os.path.isfile(site_config):
         server = Server(site_config)
+    elif os.path.isfile(user_config):
+        server = Server(user_config)
     else:
         server = Server('asm_config.yaml')
     asyncio.run(server.run())
