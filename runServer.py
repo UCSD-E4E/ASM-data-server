@@ -11,10 +11,7 @@ if __name__ == "__main__":
     site_config = os.path.join(appdirs.site_config_dir(
         app_name, app_author), 'asm_config.yaml')
     if os.path.isfile(site_config):
-        site_data = os.path.join(appdirs.site_data_dir(
-            appname=app_name, appauthor=app_author), 'devices.yaml')
-
-        server = Server(site_config, site_data)
+        server = Server(site_config)
     else:
-        server = Server('asm_config.yaml', 'devices.yaml')
+        server = Server('asm_config.yaml')
     asyncio.run(server.run())

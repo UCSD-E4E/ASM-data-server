@@ -199,8 +199,9 @@ class ClientHandler:
 
 
 class Server:
-    def __init__(self, config_file: str, devices_file: str) -> None:
+    def __init__(self, config_file: str) -> None:
         self.config = ServerConfig(config_file)
+        devices_file = os.path.join(self.config.data_dir, 'devices.yaml')
         self.device_tree = devices.DeviceTree(devices_file)
         self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
