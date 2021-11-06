@@ -149,8 +149,7 @@ class ClientHandler:
     async def onRTPStart(self, packet: codec.binaryPacket):
         print("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
-        with socketserver.TCPServer(('', 0), None) as s:
-            free_port = s.server_address[1]
+        free_port = self._config.rtsp_ports.reservePort()
         print(f'Got port {free_port}')
         response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
                                            free_port, packet.streamID)
@@ -158,6 +157,7 @@ class ClientHandler:
         await self.sendPacket(response)
         await proc.wait()
         print("ffmpeg shutdown")
+        self._config.rtsp_ports.releasePort(free_port)
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
