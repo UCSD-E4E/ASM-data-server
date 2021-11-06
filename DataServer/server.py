@@ -6,7 +6,7 @@ import socketserver
 import uuid
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
-from typing import (Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
+from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
                     Type, Union)
 
 import yaml
@@ -15,12 +15,15 @@ from asm_protocol import codec
 from DataServer import devices
 import shutil
 
+from DataServer.portAllocator import PortAllocator
+
 class ServerConfig:
     CONFIG_TYPES = {
         'data_dir': str,
         'port': int,
         'server_uuid': str,
-        'video_increment': int
+        'video_increment': int,
+        'rtsp_port_block': list,
     }
 
     def __init__(self, path: str) -> None:
@@ -28,7 +31,7 @@ class ServerConfig:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
 
-    def __load_config(self, configDict: Dict[str, Union[str, int, float]]):
+    def __load_config(self, configDict: Dict[str, Any]):
         for key in self.CONFIG_TYPES:
             if key not in configDict:
                 raise RuntimeError(f'Key "{key}" not found in configuration '
@@ -48,6 +51,7 @@ class ServerConfig:
         assert(isinstance(configDict['server_uuid'], str))
         self.uuid = uuid.UUID(configDict['server_uuid'])
         self.video_increment_s = int(configDict['video_increment'])
+        self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
 
 
 class ClientHandler:
