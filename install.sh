@@ -48,7 +48,6 @@ else
     ${PYTHON} -m pip install .
 fi
 RUN_SERVER=$(which runServer.py)
-echo ${RUN_SERVER}
 PYTHONESC=$(echo ${PYTHON} | sed 's/\//\\\//g')
 RUN_SERVERESC=$(echo ${RUN_SERVER} | sed 's/\//\\\//g')
 if [[ ${DEBUG} -eq 0 ]]
@@ -62,7 +61,6 @@ then
     cat asm_server.service | sed -e "s/python/${PYTHONESC}/g" | sed -e "s/runServer.py/${RUN_SERVERESC}/g" > ${SERVICE_LOCATION}/asm_server.service
     chmod 644 ${SERVICE_LOCATION}/asm_server.service
     systemctl ${USER_MODE} daemon-reload
-    echo ${USER_MODE}
     systemctl ${USER_MODE} enable asm_server.service
     systemctl ${USER_MODE} start asm_server.service
 
