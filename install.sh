@@ -27,6 +27,7 @@ while getopts ":dp:U" arg; do
             mkdir -p ${SERVICE_LOCATION}
             USER_MODE=--user
             CONFIG_DIR=$HOME/.config/ASMDataServer
+            mkdir -p ${CONFIG_DIR}
             ;;
         *)
             usage
