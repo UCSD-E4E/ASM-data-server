@@ -26,7 +26,7 @@ while getopts ":dp:U" arg; do
             SERVICE_LOCATION=$HOME/.config/systemd/user
             mkdir -p ${SERVICE_LOCATION}
             USER_MODE=--user
-            CONFIG_DIR=$HOME/.config
+            CONFIG_DIR=$HOME/.config/ASMDataServer
             ;;
         *)
             usage
