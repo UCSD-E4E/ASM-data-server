@@ -47,7 +47,7 @@ if [[ ${DEBUG} -eq 1 ]]; then
 else
     ${PYTHON} -m pip install .
 fi
-RUN_SERVER=$(which runServer.py)
+RUN_SERVER=$(${PYTHON} -c "import sysconfig; print(sysconfig.get_path('scripts'));exit()")/runServer.py
 PYTHONESC=$(echo ${PYTHON} | sed 's/\//\\\//g')
 RUN_SERVERESC=$(echo ${RUN_SERVER} | sed 's/\//\\\//g')
 if [[ ${DEBUG} -eq 0 ]]
