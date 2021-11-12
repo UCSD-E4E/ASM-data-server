@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import logging
 import os
 import pathlib
 import socketserver
@@ -27,6 +28,7 @@ class ServerConfig:
     }
 
     def __init__(self, path: str) -> None:
+        self._log = logging.getLogger()
         with open(path, 'r') as config_stream:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
@@ -38,6 +40,7 @@ class ServerConfig:
                                    'file!')
             if not isinstance(configDict[key], self.CONFIG_TYPES[key]):
                 raise RuntimeError(f'Configuration key {key} is malformed!')
+            self._log.info(f'Discovered {key}: {configDict[key]}')
         if not isinstance(configDict['data_dir'], str):
             raise RuntimeError(f'Data Directory path {configDict["data_dir"]}'
                                ' is invalid!')
@@ -58,6 +61,7 @@ class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
                  writer: StreamWriter, config: ServerConfig) -> None:
+        self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
         self.reader = reader
         self.writer = writer
@@ -99,6 +103,7 @@ class ClientHandler:
             if len(data):
                 packets = self.protocol_codec.decode(data)
                 for packet in packets:
+                    self._log.info(f'Received {packet}')
                     if type(packet) in self._packet_handlers:
                         asyncio.create_task(self._packet_handlers[type(packet)](packet))
                     else:
@@ -108,6 +113,7 @@ class ClientHandler:
                 await self.__packet_queue.put(None)
                 self.end_event.set()
         print('Rx closed')
+        self._log.info(f'Rx closed')
 
     async def response_sender(self):
         while not self.end_event.is_set():
@@ -115,6 +121,7 @@ class ClientHandler:
             if not packet:
                 continue
             print(f'Sending {packet}')
+            self._log.info(f'Sending {packet}')
             bytes_to_send = self.protocol_codec.encode([packet])
             self.writer.write(bytes_to_send)
             await self.writer.drain()
@@ -204,6 +211,7 @@ class ClientHandler:
 
 class Server:
     def __init__(self, config_file: str) -> None:
+        self._log = logging.getLogger(self.__class__.__name__)
         self.config = ServerConfig(config_file)
         devices_file = os.path.join(self.config.data_dir, 'devices.yaml')
         self.device_tree = devices.DeviceTree(devices_file)
@@ -211,7 +219,7 @@ class Server:
         self.__client_queues: List[ClientHandler] = []
 
     async def run(self):
-        print(f'Connecting to {self.hostname}:{self.config.port}')
+        self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
         server = await asyncio.start_server(self.client_thread, self.hostname,
                                             self.config.port)
         async with server:
@@ -228,5 +236,7 @@ class Server:
         self.__checkForFFMPEG()
 
     def __checkForFFMPEG(self):
-        if shutil.which('ffmpeg') is None:
+        ffmpeg_path = shutil.which('ffmpeg')
+        if ffmpeg_path is None:
             raise RuntimeError("Could not find ffmpeg")
+        self._log.info(f'Found ffmpeg as {ffmpeg_path}')
