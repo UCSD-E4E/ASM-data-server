@@ -48,7 +48,7 @@ class ServerConfig:
         if not os.path.isdir(self.data_dir):
             raise RuntimeError(f'Data Directory path {self.data_dir} is '
                                'invalid!')
-
+        self._log.info(f'Data Directory: {self.data_dir}')
         self.port: int = int(configDict['port'])
 
         assert(isinstance(configDict['server_uuid'], str))
@@ -107,6 +107,7 @@ class ClientHandler:
                     if type(packet) in self._packet_handlers:
                         asyncio.create_task(self._packet_handlers[type(packet)](packet))
                     else:
+                        self._log.warning(f'No handler for class {type(packet)}')
                         print(f"no handler for class {type(packet)}")
             else:
                 # Do this to unblock the response_sender
@@ -127,11 +128,13 @@ class ClientHandler:
             await self.writer.drain()
         self.writer.close()
         print('Tx closed')
+        self._log.info('Tx closed')
 
     async def sendPacket(self, packet: codec.binaryPacket):
         try:
             await self.__packet_queue.put(packet)
         except Exception:
+            self._log.exception('Failed to queue packet')
             print("Failed to queue packet")
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
@@ -139,6 +142,7 @@ class ClientHandler:
         client_uuid = packet._source
         if not self.client_device:
             print(f'getting client for uuid {client_uuid}')
+            self._log.info(f'Getting client for uuid {client_uuid}')
             try:
                 self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
             except devices.DeviceNotFoundError as e:
@@ -146,24 +150,30 @@ class ClientHandler:
                 self.device_tree.addDevice(newDevice)
                 self.client_device = newDevice
                 print(f"Added new device {newDevice}")
+                self._log.info(f"Added new device {newDevice}")
         else:
             assert(self.client_device.deviceID == client_uuid)
         print(f"Got heartbeat from {self.client_device.deviceID} "
+              f"({self.client_device.description}) at {packet.timestamp}")
+        self._log.info(f"Got heartbeat from {self.client_device.deviceID} "
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
     async def onRTPStart(self, packet: codec.binaryPacket):
         print("Got RTP Start Command")
+        self._log.info("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
         free_port = self._config.rtsp_ports.reservePort()
         print(f'Got port {free_port}')
+        self._log.info(f'Got port {free_port}')
         response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
         await proc.wait()
         print("ffmpeg shutdown")
+        self._log.info("ffmpeg shutdown")
         self._config.rtsp_ports.releasePort(free_port)
 
     async def runRTPServer(self, port: int):
@@ -182,9 +192,11 @@ class ClientHandler:
                f'-reset_timestamps 1 {file_path}')
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
+        self._log.info(f'Started ffmpeg with command: {cmd}')
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
         print(f'RTP Server on port {port} started outputting to {file_dir}')
+        self._log.info(f'RTP Server on port {port} started outputting to {file_dir}')
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
@@ -207,6 +219,7 @@ class ClientHandler:
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
         self._data_endpoints[file_key] = open(file_path, 'ab')
+        self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
 
 
 class Server:

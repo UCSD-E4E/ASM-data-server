@@ -50,13 +50,13 @@ def main():
             server = Server(user_config)
         else:
             server = Server('asm_config.yaml')
-    except:
-        root_logger.exception("Failed to create server")
+    except Exception as e:
+        root_logger.exception(f"Failed to create server: {e}")
         return
     try:
         asyncio.run(server.run())
-    except:
-        root_logger.exception("Failed to run server")
+    except Exception as e:
+        root_logger.exception(f"Failed to run server: {e}")
         
 if __name__ == "__main__":
     main()
