@@ -6,3 +6,4 @@ DataServer/__pycache__/
 devices.yaml
 
 config.yaml
+asm_config.yaml
