@@ -171,10 +171,16 @@ class ClientHandler:
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
-        await proc.wait()
+        retval = await proc.wait()
         print("ffmpeg shutdown")
         self._log.info("ffmpeg shutdown")
         self._config.rtsp_ports.releasePort(free_port)
+        if retval != 0:
+            self._log.warning("ffmpeg shut down with error code %d", retval)
+            self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
+            self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
+        else:
+            self._log.info("ffmpeg shut down with error code %d", retval)
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
