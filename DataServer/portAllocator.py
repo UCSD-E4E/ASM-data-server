@@ -1,5 +1,5 @@
 import socket
-
+import contextlib
 
 class PortAllocator:
     """This class provides a method to allocate the next available port in the
@@ -18,7 +18,7 @@ class PortAllocator:
         self.__start = block_start
         self.__end = block_end
 
-        self.__portDict = {}
+        self.__reservedPorts = set()
         self.__hostname = self.__s.gethostname()
 
         self.__ip = self.__s.gethostbyname(self.__hostname)
@@ -49,12 +49,12 @@ class PortAllocator:
         Returns:
             int: Next available port number
         """
-
         self.createDict(self.__start, self.__end)
 
         for i in self.__portDict:
             if self.__portDict[i]:
                 return_port = i
+                self.__s.bind((self.__ip, i))
                 self.__portDict[i] == False
             else:
                 continue
