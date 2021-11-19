@@ -22,13 +22,12 @@ class PortAllocator:
         self.__hostname = self.__s.gethostname()
 
         self.__ip = self.__s.gethostbyname(self.__hostname)
-
-        # TODO reimplement this
         
     def isOpen(self, ip, port):
         try:
             self.__s.connect((ip, port))
             self.__s.shutdown(2)
+            self.__s.close()
             return True 
         except:
             return False
@@ -50,6 +49,8 @@ class PortAllocator:
         Returns:
             int: Next available port number
         """
+
+        self.createDict(self.__start, self.__end)
 
         for i in self.__portDict:
             if self.__portDict[i]:
