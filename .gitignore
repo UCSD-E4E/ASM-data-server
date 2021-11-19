@@ -8,3 +8,7 @@ devices.yaml
 config.yaml
 
 venv
+
+.idea
+
+.DS_Store
