@@ -9,6 +9,7 @@ from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
 from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
                     Type, Union)
+import subprocess
 
 import yaml
 from asm_protocol import codec
@@ -98,12 +99,13 @@ class ClientHandler:
                 fi.close()
 
     async def command_handler(self):
+        logger = logging.Logger("Receiver")
         while not self.end_event.is_set():
             data = await self.reader.read(65536)
             if len(data):
                 packets = self.protocol_codec.decode(data)
                 for packet in packets:
-                    self._log.info(f'Received {packet}')
+                    logger.info(f'Received {packet}')
                     if type(packet) in self._packet_handlers:
                         asyncio.create_task(self._packet_handlers[type(packet)](packet))
                     else:
@@ -117,12 +119,13 @@ class ClientHandler:
         self._log.info(f'Rx closed')
 
     async def response_sender(self):
+        logger = logging.Logger("Sender")
         while not self.end_event.is_set():
             packet = await self.__packet_queue.get()
             if not packet:
                 continue
             print(f'Sending {packet}')
-            self._log.info(f'Sending {packet}')
+            logger.info(f'Sending {packet}')
             bytes_to_send = self.protocol_codec.encode([packet])
             self.writer.write(bytes_to_send)
             await self.writer.drain()
@@ -229,8 +232,16 @@ class ClientHandler:
 
 
 class Server:
+    def __getRevision(self) -> str:
+        git_rev_parse = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+        git_diff_ret = subprocess.run(['git', 'diff', '--quiet']).returncode
+        if git_diff_ret != 0:
+            git_rev_parse += ' dirty'
+        return git_rev_parse
+
     def __init__(self, config_file: str) -> None:
         self._log = logging.getLogger(self.__class__.__name__)
+        self._log.info(f"Starting ASM Data Server v{DataServer.__version__}, {self.__getRevision()}")
         self.config = ServerConfig(config_file)
         devices_file = os.path.join(self.config.data_dir, 'devices.yaml')
         self.device_tree = devices.DeviceTree(devices_file)
