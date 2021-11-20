@@ -170,7 +170,7 @@ class ClientHandler:
             self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
             self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
         else:
-            self._log.info("ffmpeg shut down with error code %d", retval)
+            self._log.info("ffmpeg returned with code %d", retval)
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
