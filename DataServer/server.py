@@ -164,7 +164,6 @@ class ClientHandler:
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
         retval = await proc.wait()
-        self._log.info("ffmpeg shutdown")
         self._config.rtsp_ports.releasePort(free_port)
         if retval != 0:
             self._log.warning("ffmpeg shut down with error code %d", retval)
