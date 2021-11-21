@@ -16,6 +16,7 @@ from asm_protocol import codec
 
 from DataServer import devices
 import shutil
+import DataServer
 
 from DataServer.portAllocator import PortAllocator
 
