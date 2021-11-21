@@ -220,8 +220,14 @@ class ClientHandler:
 
 class Server:
     def __getRevision(self) -> str:
-        git_rev_parse = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
-        git_diff_ret = subprocess.run(['git', 'diff', '--quiet']).returncode
+        try:
+            git_rev_parse = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+        except subprocess.CalledProcessError as e:
+            git_rev_parse = ''
+        try:
+            git_diff_ret = subprocess.run(['git', 'diff', '--quiet']).returncode
+        except Exception as e:
+            git_diff_ret = 0
         if git_diff_ret != 0:
             git_rev_parse += ' dirty'
         return git_rev_parse
