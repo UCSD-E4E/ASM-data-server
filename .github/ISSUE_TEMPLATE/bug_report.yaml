@@ -49,6 +49,8 @@ body:
         - Animal Flipper
         - On Box Sensor Node
         - Remote Sensor Node
+        - Base Node
+        - Server
     validations:
       required: true
   - type: textarea
