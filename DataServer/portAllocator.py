@@ -1,5 +1,6 @@
 import socket
 import contextlib
+import errno
 
 class PortAllocator:
     """This class provides a method to allocate the next available port in the
@@ -49,19 +50,22 @@ class PortAllocator:
         Returns:
             int: Next available port number
         """
-        self.createDict(self.__start, self.__end)
-
-        for i in self.__portDict:
-            if self.__portDict[i]:
-                return_port = i
-                self.__s.bind((self.__ip, i))
-                self.__portDict[i] == False
-            else:
-                continue
-
-        if return_port > self.__end:
-            raise RuntimeError('All ports occupied')
-        return return_port
+        current = self.__start
+        while current < self.__end:
+            if current not in self.__reservedPorts:
+                try:
+                    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as my_socket:
+                        my_socket.bind((self.__ip, current))
+                        this_port = my_socket.getsockname()[1]
+                        self.__reservedPorts.add(this_port)
+                        return this_port
+                except socket.error as error:
+                    if not error.errno == errno.EADDRINUSE:
+                        raise
+                    assert not current == 0
+                    self.__reservedPorts.add(current)
+            current += 1
+    raise Exception('Could not find open port')
 
     def releasePort(self, port: int) -> None:
         """Releases the lock on the specified port.  After calling this method
@@ -80,7 +84,7 @@ class PortAllocator:
         try:
             self.__s.bind((self.__ip, port))
             self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.__portDict[port] = True
+            self.__reservedPorts.remove(port)
         except:
             raise RuntimeError
         
