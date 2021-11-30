@@ -41,7 +41,7 @@ def test_PortAllocator():
     try:
         allocator.reservePort()
     except Exception as e:
-        assert(isinstance(e, RuntimeError))
+        assert(isinstance(e, Exception))
     bad_port = list(sockets.keys())[0]
     for port_num, sock in sockets.items():
         sock.close()
