@@ -10,6 +10,7 @@ setup(name='ASM-DataServer',
       install_requires=[
           'PyYAML',
           'asm_protocol',
-          'appdirs'
-      ]
+          'appdirs',
+          'pytest'
+        ]
       )
