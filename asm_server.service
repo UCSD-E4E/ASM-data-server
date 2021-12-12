@@ -1,10 +1,10 @@
 [Unit]
 Description=ASM Data Server
-Requires=network-online.target local-fs.target
+Wants=network-online.target remote-fs.target
 
 [Service]
 Type=idle
-ExecStart=python runServer.py >> /var/log/asm_server.log 2>&1
+ExecStart=python runServer.py
 
 [Install]
 WantedBy=multi-user.target

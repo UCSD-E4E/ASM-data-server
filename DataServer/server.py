@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import logging
 import os
 import pathlib
 import socketserver
@@ -8,12 +9,14 @@ from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
 from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
                     Type, Union)
+import subprocess
 
 import yaml
 from asm_protocol import codec
 
 from DataServer import devices
 import shutil
+import DataServer
 
 from DataServer.portAllocator import PortAllocator
 
@@ -27,6 +30,7 @@ class ServerConfig:
     }
 
     def __init__(self, path: str) -> None:
+        self._log = logging.getLogger()
         with open(path, 'r') as config_stream:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
@@ -38,6 +42,7 @@ class ServerConfig:
                                    'file!')
             if not isinstance(configDict[key], self.CONFIG_TYPES[key]):
                 raise RuntimeError(f'Configuration key {key} is malformed!')
+            self._log.info(f'Discovered {key}: {configDict[key]}')
         if not isinstance(configDict['data_dir'], str):
             raise RuntimeError(f'Data Directory path {configDict["data_dir"]}'
                                ' is invalid!')
@@ -45,7 +50,7 @@ class ServerConfig:
         if not os.path.isdir(self.data_dir):
             raise RuntimeError(f'Data Directory path {self.data_dir} is '
                                'invalid!')
-
+        self._log.info(f'Data Directory: {self.data_dir}')
         self.port: int = int(configDict['port'])
 
         assert(isinstance(configDict['server_uuid'], str))
@@ -58,6 +63,7 @@ class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
                  writer: StreamWriter, config: ServerConfig) -> None:
+        self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
         self.reader = reader
         self.writer = writer
@@ -94,70 +100,78 @@ class ClientHandler:
                 fi.close()
 
     async def command_handler(self):
+        logger = logging.Logger("Receiver")
         while not self.end_event.is_set():
             data = await self.reader.read(65536)
             if len(data):
                 packets = self.protocol_codec.decode(data)
                 for packet in packets:
+                    logger.info(f'Received {packet}')
                     if type(packet) in self._packet_handlers:
                         asyncio.create_task(self._packet_handlers[type(packet)](packet))
                     else:
-                        print(f"no handler for class {type(packet)}")
+                        self._log.warning(f'No handler for class {type(packet)}')
             else:
                 # Do this to unblock the response_sender
                 await self.__packet_queue.put(None)
                 self.end_event.set()
-        print('Rx closed')
+        self._log.info(f'Rx closed')
 
     async def response_sender(self):
+        logger = logging.Logger("Sender")
         while not self.end_event.is_set():
             packet = await self.__packet_queue.get()
             if not packet:
                 continue
-            print(f'Sending {packet}')
+            logger.info(f'Sending {packet}')
             bytes_to_send = self.protocol_codec.encode([packet])
             self.writer.write(bytes_to_send)
             await self.writer.drain()
         self.writer.close()
-        print('Tx closed')
+        self._log.info('Tx closed')
 
     async def sendPacket(self, packet: codec.binaryPacket):
         try:
             await self.__packet_queue.put(packet)
         except Exception:
-            print("Failed to queue packet")
+            self._log.exception('Failed to queue packet')
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
         client_uuid = packet._source
         if not self.client_device:
-            print(f'getting client for uuid {client_uuid}')
+            self._log.info(f'Getting client for uuid {client_uuid}')
             try:
                 self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
             except devices.DeviceNotFoundError as e:
                 newDevice = devices.Device(client_uuid, "Auto-registered device", devices.DeviceType.AUTO_REGISTERED)
                 self.device_tree.addDevice(newDevice)
                 self.client_device = newDevice
-                print(f"Added new device {newDevice}")
+                self._log.info(f"Added new device {newDevice}")
         else:
             assert(self.client_device.deviceID == client_uuid)
-        print(f"Got heartbeat from {self.client_device.deviceID} "
+        self._log.info(f"Got heartbeat from {self.client_device.deviceID} "
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
     async def onRTPStart(self, packet: codec.binaryPacket):
-        print("Got RTP Start Command")
+        self._log.info("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
-        with socketserver.TCPServer(('', 0), None) as s:
-            free_port = s.server_address[1]
-        print(f'Got port {free_port}')
+        free_port = self._config.rtsp_ports.reservePort()
+        self._log.info(f'Got port {free_port}')
         response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
-        await proc.wait()
-        print("ffmpeg shutdown")
+        retval = await proc.wait()
+        self._config.rtsp_ports.releasePort(free_port)
+        if retval != 0:
+            self._log.warning("ffmpeg shut down with error code %d", retval)
+            self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
+            self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
+        else:
+            self._log.info("ffmpeg returned with code %d", retval)
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
@@ -175,9 +189,10 @@ class ClientHandler:
                f'-reset_timestamps 1 {file_path}')
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
+        self._log.info(f'Started ffmpeg with command: {cmd}')
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
-        print(f'RTP Server on port {port} started outputting to {file_dir}')
+        self._log.info(f'RTP Server on port {port} started outputting to {file_dir}')
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
@@ -200,10 +215,26 @@ class ClientHandler:
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
         self._data_endpoints[file_key] = open(file_path, 'ab')
+        self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
 
 
 class Server:
+    def __getRevision(self) -> str:
+        try:
+            git_rev_parse = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+        except subprocess.CalledProcessError as e:
+            git_rev_parse = ''
+        try:
+            git_diff_ret = subprocess.run(['git', 'diff', '--quiet']).returncode
+        except Exception as e:
+            git_diff_ret = 0
+        if git_diff_ret != 0:
+            git_rev_parse += ' dirty'
+        return git_rev_parse
+
     def __init__(self, config_file: str) -> None:
+        self._log = logging.getLogger(self.__class__.__name__)
+        self._log.info(f"Starting ASM Data Server v{DataServer.__version__}, {self.__getRevision()}")
         self.config = ServerConfig(config_file)
         devices_file = os.path.join(self.config.data_dir, 'devices.yaml')
         self.device_tree = devices.DeviceTree(devices_file)
@@ -211,7 +242,7 @@ class Server:
         self.__client_queues: List[ClientHandler] = []
 
     async def run(self):
-        print(f'Connecting to {self.hostname}:{self.config.port}')
+        self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
         server = await asyncio.start_server(self.client_thread, self.hostname,
                                             self.config.port)
         async with server:
@@ -228,5 +259,7 @@ class Server:
         self.__checkForFFMPEG()
 
     def __checkForFFMPEG(self):
-        if shutil.which('ffmpeg') is None:
+        ffmpeg_path = shutil.which('ffmpeg')
+        if ffmpeg_path is None:
             raise RuntimeError("Could not find ffmpeg")
+        self._log.info(f'Found ffmpeg as {ffmpeg_path}')
