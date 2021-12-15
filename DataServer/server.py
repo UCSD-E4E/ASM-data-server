@@ -155,6 +155,18 @@ class ClientHandler:
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
+    async def reportOutput(self, stream: asyncio.StreamReader, process_name: str, tag: str, interval: int = 60):
+        while True:
+            self._log.debug("report")
+            output = ""
+            while True:
+                buf = await stream.read(1024)
+                output += buf.decode()
+                if buf == b"":
+                    break
+            self._log.info(f"{process_name} {tag}: {output}")
+            await asyncio.sleep(interval)
+
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
@@ -164,14 +176,21 @@ class ClientHandler:
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
+
+        task_stdout = asyncio.create_task(self.reportOutput(proc.stdout, "ffmpeg", "stdout", 60))
+        task_stderr = asyncio.create_task(self.reportOutput(proc.stderr, "ffmpeg", "stderr", 60))
+
         retval = await proc.wait()
+        task_stdout.cancel()
+        task_stderr.cancel()
         self._config.rtsp_ports.releasePort(free_port)
-        if retval != 0:
-            self._log.warning("ffmpeg shut down with error code %d", retval)
-            self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
-            self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
+
+        if proc.returncode != 0:
+            self._log.warning("ffmpeg shut down with error code %d", proc.returncode)
+            self._log.info("ffmpeg stderr: %s", (await proc.stdout.read()).decode())
+            self._log.info("ffmpeg stdout: %s", (await proc.stderr.read()).decode())
         else:
-            self._log.info("ffmpeg returned with code %d", retval)
+            self._log.info("ffmpeg returned with code 0")
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
