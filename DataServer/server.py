@@ -3,22 +3,25 @@ import datetime as dt
 import logging
 import os
 import pathlib
+import shutil
 import socketserver
+import subprocess
 import uuid
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
-from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
-                    Type, Union)
-import subprocess
+from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
+                    Tuple, Type, Union)
 
 import yaml
 from asm_protocol import codec
 
-from DataServer import devices
-import shutil
 import DataServer
-
+from DataServer import devices
 from DataServer.portAllocator import PortAllocator
+
+import ASM_utils.ffmpeg.ffmpeg as ffmpeg
+import ASM_utils.ffmpeg.rtp as rtp
+import ASM_utils.ffmpeg.file as file_sink
 
 class ServerConfig:
     CONFIG_TYPES = {
@@ -87,7 +90,9 @@ class ClientHandler:
 
         self.hasClient = asyncio.Event()
         
+        
     async def run(self):
+        self._log.debug("Starting tasks")
         rx = asyncio.create_task(self.command_handler())
         tx = asyncio.create_task(self.response_sender())
         done, pending = await asyncio.wait({rx, tx})
@@ -100,7 +105,8 @@ class ClientHandler:
                 fi.close()
 
     async def command_handler(self):
-        logger = logging.Logger("Receiver")
+        logger = logging.getLogger("ClientHandler Receiver")
+        logger.info("Started")
         while not self.end_event.is_set():
             data = await self.reader.read(65536)
             if len(data):
@@ -115,26 +121,29 @@ class ClientHandler:
                 # Do this to unblock the response_sender
                 await self.__packet_queue.put(None)
                 self.end_event.set()
-        self._log.info(f'Rx closed')
+        logger.info(f'Rx closed')
 
     async def response_sender(self):
-        logger = logging.Logger("Sender")
+        logger = logging.getLogger("ClientHandler Sender")
+        logger.info("Started")
         while not self.end_event.is_set():
             packet = await self.__packet_queue.get()
             if not packet:
                 continue
-            logger.info(f'Sending {packet}')
+            logger.info(f'Sending Packet {packet}')
             bytes_to_send = self.protocol_codec.encode([packet])
             self.writer.write(bytes_to_send)
             await self.writer.drain()
         self.writer.close()
-        self._log.info('Tx closed')
+        logger.info('Tx closed')
 
     async def sendPacket(self, packet: codec.binaryPacket):
+        log = logging.getLogger('ClientHandler I/O')
         try:
             await self.__packet_queue.put(packet)
+            log.info(f'Queued packet {packet}')
         except Exception:
-            self._log.exception('Failed to queue packet')
+            log.exception('Failed to queue packet')
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
@@ -156,13 +165,17 @@ class ClientHandler:
         self.hasClient.set()
 
     async def onRTPStart(self, packet: codec.binaryPacket):
+        SUFFIX_MAP = {
+            1: self.startRTPVideoServer,
+            2: self.startRTPAudioServer
+        }
         self._log.info("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
         free_port = self._config.rtsp_ports.reservePort()
         self._log.info(f'Got port {free_port}')
         response = codec.E4E_START_RTP_RSP(self._config.uuid, packet._source,
                                            free_port, packet.streamID)
-        proc = await self.runRTPServer(free_port)
+        proc = await SUFFIX_MAP[packet.streamID](free_port)
         await self.sendPacket(response)
         retval = await proc.wait()
         self._config.rtsp_ports.releasePort(free_port)
@@ -172,27 +185,74 @@ class ClientHandler:
             self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
         else:
             self._log.info("ffmpeg returned with code %d", retval)
+    
+    async def startRTPAudioServer(self, port: int):
+        await self.hasClient.wait()
+        assert(self.client_device)
+        data_dir = self._config.data_dir
 
-    async def runRTPServer(self, port: int):
+        device_path = self.client_device.getDevicePath()
+        fname = '%Y.%m.%d.%H.%M.%S.mp3'
+        file_path = pathlib.Path(data_dir, device_path, fname)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        segment_length = dt.timedelta(seconds=self._config.video_increment_s)
+
+        stream_source = rtp.RTPAudioStream('@', port)
+        
+        stream_sink = file_sink.SegmentedAudioFileSink()
+        stream_sink.setPath(pathlib.Path(file_path))
+        stream_sink.set_segment_length(segment_length)
+        stream_sink.configure_audio(codec='libmp3lame')
+
+        stream_config = ffmpeg.FFMPEGInstance()
+        stream_config.set_input(stream_source)
+        stream_config.set_output(stream_sink)
+        
+        # cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
+        #        f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
+        #        f'-reset_timestamps 1 {file_path}')
+        cmd = " ".join(stream_config.get_command())
+        proc_out = asyncio.subprocess.PIPE
+        proc_err = asyncio.subprocess.PIPE
+        self._log.info(f'Started ffmpeg with command: {cmd}')
+        proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
+                                                     stderr=proc_err)
+        self._log.info(f'RTP Audio Server on port {port} started outputting to {file_path.parent.as_posix()}')
+        return proc
+
+    async def startRTPVideoServer(self, port: int):
         await self.hasClient.wait()
         assert(self.client_device)
         data_dir = self._config.data_dir
 
         device_path = self.client_device.getDevicePath()
         fname = '%Y.%m.%d.%H.%M.%S.mp4'
-        file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
-        file_dir = os.path.dirname(file_path)
-        pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
+        file_path = pathlib.Path(data_dir, device_path, fname)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        segment_length = dt.timedelta(seconds=self._config.video_increment_s)
+
+        stream_source = rtp.RTPVideoStream('@', port)
         
-        cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
-               f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
-               f'-reset_timestamps 1 {file_path}')
+        stream_sink = file_sink.SegmentedVideoFileSink()
+        stream_sink.setPath(pathlib.Path(file_path))
+        stream_sink.set_segment_length(segment_length)
+
+        stream_config = ffmpeg.FFMPEGInstance()
+        stream_config.set_input(stream_source)
+        stream_config.set_output(stream_sink)
+        
+        # cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
+        #        f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
+        #        f'-reset_timestamps 1 {file_path}')
+        cmd = " ".join(stream_config.get_command())
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
         self._log.info(f'Started ffmpeg with command: {cmd}')
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
-        self._log.info(f'RTP Server on port {port} started outputting to {file_dir}')
+        self._log.info(f'RTP Video Server on port {port} started outputting to {file_path.parent.as_posix()}')
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
