@@ -155,17 +155,14 @@ class ClientHandler:
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
-    async def reportOutput(self, stream: asyncio.StreamReader, process_name: str, tag: str, interval: int = 60):
+    async def reportOutput(self, stream: asyncio.StreamReader, process_name: str, tag: str):
         while True:
-            self._log.debug("report")
-            output = ""
             while True:
-                buf = await stream.read(1024)
-                output += buf.decode()
-                if buf == b"":
+                line = await stream.readline()
+                if line:
+                    self._log.info(f"{process_name} {tag}: {line.decode().rstrip()}")
+                else:
                     break
-            self._log.info(f"{process_name} {tag}: {output}")
-            await asyncio.sleep(interval)
 
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
@@ -177,12 +174,12 @@ class ClientHandler:
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
 
-        task_stdout = asyncio.create_task(self.reportOutput(proc.stdout, "ffmpeg", "stdout", 60))
-        task_stderr = asyncio.create_task(self.reportOutput(proc.stderr, "ffmpeg", "stderr", 60))
+        await asyncio.wait([
+            self.reportOutput(proc.stdout, "ffmpeg", "stdout"), 
+            self.reportOutput(proc.stderr, "ffmpeg", "stderr")
+        ])
 
         retval = await proc.wait()
-        task_stdout.cancel()
-        task_stderr.cancel()
         self._config.rtsp_ports.releasePort(free_port)
 
         if proc.returncode != 0:
