@@ -157,12 +157,12 @@ class ClientHandler:
 
     async def reportOutput(self, stream: asyncio.StreamReader, process_name: str, tag: str):
         while True:
-            while True:
-                line = await stream.readline()
-                if line:
-                    self._log.info(f"{process_name} {tag}: {line.decode().rstrip()}")
-                else:
-                    break
+            line = await stream.readline()
+            if line:
+                self._log.info(f"{process_name} {tag}: {line.decode().rstrip()}")
+            else:
+                self._log.info(f"${process_name} output stopped for ${tag}")
+                break
 
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
