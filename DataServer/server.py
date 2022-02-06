@@ -79,6 +79,7 @@ class ClientHandler:
                 codec.E4E_Heartbeat: self.heartbeat_handler,
                 codec.E4E_START_RTP_CMD: self.onRTPStart,
                 codec.E4E_Flipper_Data: self.flipper_handler,
+                codec.E4E_Data_Labels: self.data_labels
             }
 
         self.client_device: Optional[devices.Device] = None
@@ -152,6 +153,24 @@ class ClientHandler:
                 dataFile.write(f'{packet.timestamp}: out\n')
             else:
                 dataFile.write(f'{packet.timestamp}: in\n')
+
+    async def data_labels(self, packet: codec.binaryPacket):
+        assert(isinstance(packet, codec.E4E_Data_Labels))
+        await self.hasClient.wait()
+        assert(self.client_device)
+
+        data_dir = self._config.data_dir
+        self._log.info("Got data label")
+
+        device_path = self.client_device.getDevicePath()
+
+        fname = "labels.csv"
+
+        file_path = pathlib.Path(data_dir, device_path, fname)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, 'a') as dataFile:
+            dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
