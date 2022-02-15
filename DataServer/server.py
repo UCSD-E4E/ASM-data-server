@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 import logging
 import os
+import appdirs
 import pathlib
 import socketserver
 import uuid
@@ -86,6 +87,12 @@ class ClientHandler:
         self._config = config
 
         self.hasClient = asyncio.Event()
+
+        if os.getuid() == 0:
+            self.ff_log_dir = os.path.abspath(os.path.join('var', 'log', 'ffmpeg_logs'))
+        else:
+            self.ff_log_dir = appdirs.user_log_dir('ASMDataServer')
+        pathlib.Path(self.ff_log_dir).mkdir(parents=True, exist_ok=True)
         
     async def run(self):
         rx = asyncio.create_task(self.command_handler())
@@ -155,15 +162,6 @@ class ClientHandler:
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
-    async def reportOutput(self, stream: asyncio.StreamReader, process_name: str, tag: str):
-        while True:
-            line = await stream.readline()
-            if line:
-                self._log.info(f"{process_name} {tag}: {line.decode().rstrip()}")
-            else:
-                self._log.info(f"${process_name} output stopped for ${tag}")
-                break
-
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
         assert(isinstance(packet, codec.E4E_START_RTP_CMD))
@@ -173,11 +171,6 @@ class ClientHandler:
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
-
-        await asyncio.wait([
-            self.reportOutput(proc.stdout, "ffmpeg", "stdout"), 
-            self.reportOutput(proc.stderr, "ffmpeg", "stderr")
-        ])
 
         retval = await proc.wait()
         self._config.rtsp_ports.releasePort(free_port)
@@ -202,13 +195,16 @@ class ClientHandler:
         
         cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
                f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
-               f'-reset_timestamps 1 {file_path}')
+               f'-reset_timestamps 1 {file_path} '
+               f' 2>&1 | /home/asm-data/ASM-data-server/split_log {os.path.join(self.ff_log_dir, device_path, "stats.log")} {os.path.join(self.ff_log_dir, device_path, "info.log")}'
+            )
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
         self._log.info(f'Started ffmpeg with command: {cmd}')
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
         self._log.info(f'RTP Server on port {port} started outputting to {file_dir}')
+        self._log.info(f"FFmpeg logging to: {os.path.join(self.ff_log_dir, device_path)}")
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
