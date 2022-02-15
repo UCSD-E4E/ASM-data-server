@@ -91,7 +91,7 @@ class ClientHandler:
         if os.getuid() == 0:
             self.ff_log_dir = os.path.abspath(os.path.join('var', 'log', 'ffmpeg_logs'))
         else:
-            self.ff_log_dir = appdirs.user_log_dir('ASMDataServer')
+            self.ff_log_dir = os.path.join(appdirs.user_log_dir('ASMDataServer'), 'ffmpeg_logs')
         pathlib.Path(self.ff_log_dir).mkdir(parents=True, exist_ok=True)
         
     async def run(self):
