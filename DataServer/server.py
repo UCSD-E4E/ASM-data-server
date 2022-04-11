@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 import logging
 import os
+import sys
 import appdirs
 import pathlib
 import socketserver
@@ -89,9 +90,9 @@ class ClientHandler:
         self.hasClient = asyncio.Event()
 
         if os.getuid() == 0:
-            self.ff_log_dir = os.path.abspath(os.path.join('var', 'log', 'ffmpeg_logs'))
+            self.ff_log_dir = pathlib.Path('var', 'log', 'ffmpeg_logs').absolute()
         else:
-            self.ff_log_dir = os.path.join(appdirs.user_log_dir('ASMDataServer'), 'ffmpeg_logs')
+            self.ff_log_dir = pathlib.Path(appdirs.user_log_dir('ASMDataServer'), 'ffmpeg_logs')
         pathlib.Path(self.ff_log_dir).mkdir(parents=True, exist_ok=True)
         
     async def run(self):
@@ -177,8 +178,8 @@ class ClientHandler:
 
         if proc.returncode != 0:
             self._log.warning("ffmpeg shut down with error code %d", proc.returncode)
-            self._log.info("ffmpeg stderr: %s", (await proc.stdout.read()).decode())
-            self._log.info("ffmpeg stdout: %s", (await proc.stderr.read()).decode())
+            self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
+            self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
         else:
             self._log.info("ffmpeg returned with code 0")
 
@@ -192,11 +193,15 @@ class ClientHandler:
         file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
-        
+
+        ff_stats_path = pathlib.Path(self.ff_log_dir, device_path, "stats.log")
+        ff_info_path = pathlib.Path(self.ff_log_dir, device_path, "info.log")
+        script_path = "-m ASM_utils.ffmpeg.split_log"
+
         cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
                f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
                f'-reset_timestamps 1 {file_path} '
-               f' 2>&1 | /home/asm-data/ASM-data-server/split_log {os.path.join(self.ff_log_dir, device_path, "stats.log")} {os.path.join(self.ff_log_dir, device_path, "info.log")}'
+               f' 2>&1 | {sys.executable} {script_path} {ff_stats_path} {ff_info_path}'
             )
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
