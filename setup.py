@@ -11,6 +11,7 @@ setup(name='ASM-DataServer',
           'PyYAML',
           'asm_protocol',
           'appdirs',
-          'pytest'
+          'pytest',
+          'AsmCommon',
         ]
       )
