@@ -1,26 +1,26 @@
-import appdirs
 import asyncio
 import datetime as dt
 import logging
 import os
 import pathlib
+import shutil
 import socketserver
+import subprocess
 import sys
 import uuid
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
-from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
-                    Type, Union)
-import subprocess
+from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
+                    Tuple, Type, Union)
 
+import appdirs
 import yaml
 from asm_protocol import codec
 
-from DataServer import devices
-import shutil
 import DataServer
-
+from DataServer import devices
 from DataServer.portAllocator import PortAllocator
+
 
 class ServerConfig:
     CONFIG_TYPES = {
