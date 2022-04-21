@@ -3,22 +3,24 @@ import datetime as dt
 import logging
 import os
 import pathlib
+import shutil
 import socketserver
+import subprocess
+import sys
 import uuid
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
-from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional, Tuple,
-                    Type, Union)
-import subprocess
+from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
+                    Tuple, Type, Union)
 
+import appdirs
 import yaml
 from asm_protocol import codec
 
-from DataServer import devices
-import shutil
 import DataServer
-
+from DataServer import devices
 from DataServer.portAllocator import PortAllocator
+
 
 class ServerConfig:
     CONFIG_TYPES = {
@@ -88,6 +90,13 @@ class ClientHandler:
         self._config = config
 
         self.hasClient = asyncio.Event()
+
+        if os.getuid() == 0:
+            self.ff_log_dir = pathlib.Path('var', 'log', 'ffmpeg_logs').absolute()
+        else:
+            # absolute() not necessary due to ASMDataServer dir path
+            self.ff_log_dir = pathlib.Path(appdirs.user_log_dir('ASMDataServer'), 'ffmpeg_logs')
+        pathlib.Path(self.ff_log_dir).mkdir(parents=True, exist_ok=True)
         
     async def run(self):
         rx = asyncio.create_task(self.command_handler())
@@ -200,14 +209,16 @@ class ClientHandler:
                                            free_port, packet.streamID)
         proc = await self.runRTPServer(free_port)
         await self.sendPacket(response)
+
         retval = await proc.wait()
         self._config.rtsp_ports.releasePort(free_port)
-        if retval != 0:
-            self._log.warning("ffmpeg shut down with error code %d", retval)
+
+        if proc.returncode != 0:
+            self._log.warning("ffmpeg shut down with error code %d", proc.returncode)
             self._log.info("ffmpeg stderr: %s", (await proc.stderr.read()).decode())
             self._log.info("ffmpeg stdout: %s", (await proc.stdout.read()).decode())
         else:
-            self._log.info("ffmpeg returned with code %d", retval)
+            self._log.info("ffmpeg returned with code 0")
 
     async def runRTPServer(self, port: int):
         await self.hasClient.wait()
@@ -219,16 +230,23 @@ class ClientHandler:
         file_path = os.path.abspath(os.path.join(data_dir, device_path, fname))
         file_dir = os.path.dirname(file_path)
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
-        
+
+        ff_stats_path = pathlib.Path(self.ff_log_dir, device_path, "stats.log")
+        ff_info_path = pathlib.Path(self.ff_log_dir, device_path, "info.log")
+        split_script = "-m ASM_utils.ffmpeg.split_log"
+
         cmd = (f'ffmpeg -i tcp://@:{port}?listen -c copy -flags +global_header'
                f' -f segment -segment_time {self._config.video_increment_s} -strftime 1 '
-               f'-reset_timestamps 1 {file_path}')
+               f'-reset_timestamps 1 {file_path} '
+               f' 2>&1 | {sys.executable} {split_script} {ff_stats_path} {ff_info_path}'
+            )
         proc_out = asyncio.subprocess.PIPE
         proc_err = asyncio.subprocess.PIPE
         self._log.info(f'Started ffmpeg with command: {cmd}')
         proc = await asyncio.create_subprocess_shell(cmd, stdout=proc_out,
                                                      stderr=proc_err)
         self._log.info(f'RTP Server on port {port} started outputting to {file_dir}')
+        self._log.info(f"FFmpeg logging to: {os.path.join(self.ff_log_dir, device_path)}")
         return proc
 
     async def data_packet_handler(self, packet: codec.binaryPacket):
