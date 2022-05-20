@@ -42,6 +42,8 @@ if [[ $USER_MODE == '' ]]; then
     fi
 fi
 
+mkdir -p ${CONFIG_DIR}
+
 if [[ ${DEBUG} -eq 1 ]]; then
     ${PYTHON} -m pip install -e .
 else
