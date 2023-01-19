@@ -4,5 +4,18 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.linting.pylintEnabled": true,
+		"editor.rulers": [
+			100
+		]
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-python.vscode-pylance",
+			"ms-python.python",
+			"ms-toolsai.jupyter",
+			"njpwerner.autodocstring"
+		]
+	}
 }

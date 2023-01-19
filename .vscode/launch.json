@@ -8,8 +8,10 @@
             "name": "Run Data Server",
             "type": "python",
             "request": "launch",
-            "program": "runServer.py",
-            "console": "integratedTerminal"
+            "module": "DataServer.runServer",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "sudo": true
         }
     ]
 }
