@@ -19,6 +19,7 @@ setup(
 	install_requires=[
 		'PyYAML',
 		'asm_protocol @ git+https://github.com/UCSD-E4E/ASM_protocol.git',
+		'AsmCommon @ git+https://github.com/UCSD-E4E.ASM-common.git',
 		'appdirs',
 		'pytest'],
 	extras_require={
