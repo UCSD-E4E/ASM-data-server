@@ -8,6 +8,7 @@ import socketserver
 import subprocess
 import sys
 import uuid
+import smtplib
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
 from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
@@ -271,6 +272,34 @@ class ClientHandler:
         self._data_endpoints[file_key] = open(file_path, 'ab')
         self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
 
+    def send_email(self):
+        gmail_user = 'asm.e4e.test.mail@gmail.com'
+        gmail_password = 'vibqniwadzsbnyir'
+
+        sent_from = gmail_user
+        
+        # TODO: list of Admin users' email, read in from config file?
+        to = ['zhz049@ucsd.edu']
+        subject = 'Node unconnected'
+        body = 'Node #1 is unconnected from network!'
+
+        email_text = """\
+        From: %s
+        To: %s
+        Subject: %s
+
+        %s
+        """ % (sent_from, ", ".join(to), subject, body)
+
+        try:
+            smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+            smtp_server.ehlo()
+            smtp_server.login(gmail_user, gmail_password)
+            smtp_server.sendmail(sent_from, to, email_text)
+            smtp_server.close()
+            self._log.info ("Email sent successfully!")
+        except Exception as ex:
+            self._log.info ("Something went wrong….",ex)
 
 class Server:
     def __getRevision(self) -> str:
