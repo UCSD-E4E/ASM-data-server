@@ -29,6 +29,7 @@ class ServerConfig:
         'server_uuid': str,
         'video_increment': int,
         'rtsp_port_block': list,
+        'heartbeat_timeout_secs': float,
     }
 
     def __init__(self, path: str) -> None:
@@ -60,6 +61,7 @@ class ServerConfig:
         self.uuid = uuid.UUID(configDict['server_uuid'])
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
+        self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
 
 
 class ClientHandler:
@@ -187,8 +189,7 @@ class ClientHandler:
         print("TODO: Send email")
 
     async def outage_timeout_task(self):
-        # FIXME:
-        await asyncio.sleep(10)
+        await asyncio.sleep(self._config.heartbeat_timeout_secs)
         await self.send_outage_alert()
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
