@@ -19,3 +19,7 @@ video_increment: 300
 #
 # This is the block of ports that RTSP servers should use.
 rtsp_port_block: [9100, 9200]
+
+# The amount of time in senconds for a device to be considered dropped
+# without hearing a heartbeat
+heartbeat_timeout_secs = 10

@@ -30,10 +30,12 @@ class ServerConfig:
         'server_uuid': str,
         'video_increment': int,
         'rtsp_port_block': list,
+        'heartbeat_timeout_secs': float,
     }
 
     def __init__(self, path: str) -> None:
         self._log = logging.getLogger()
+        self._heartbeat_timeout = None
         with open(path, 'r') as config_stream:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
@@ -60,6 +62,7 @@ class ServerConfig:
         self.uuid = uuid.UUID(configDict['server_uuid'])
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
+        self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
 
 
 class ClientHandler:
@@ -182,6 +185,14 @@ class ClientHandler:
         with open(file_path, 'a') as dataFile:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
+    async def send_outage_alert(self):
+        print("There was an outage")
+        print("TODO: Send email")
+
+    async def outage_timeout_task(self):
+        await asyncio.sleep(self._config.heartbeat_timeout_secs)
+        await self.send_outage_alert()
+
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
         client_uuid = packet._source
@@ -200,6 +211,11 @@ class ClientHandler:
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
+
+        if self._heartbeat_timeout is not None:
+            self._heartbeat_timeout.cancel()
+        self._heartbeat_timeout = asyncio.create_task(self.outage_timeout_task())
+
 
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
