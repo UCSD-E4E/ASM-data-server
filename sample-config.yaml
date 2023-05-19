@@ -8,9 +8,9 @@ data_dir: /home/asm-data/nas/data
 port: 9000
 
 # Data Server UID
-# 
+#
 # This is the UUID that uniquely identifies this device.
-server_uuid: 'fda6297c-1107-11ec-bbd2-fcaa14694a7a'
+server_uuid: "fda6297c-1107-11ec-bbd2-fcaa14694a7a"
 
 # This is the maximum length of video data
 video_increment: 300
@@ -22,4 +22,4 @@ rtsp_port_block: [9100, 9200]
 
 # The amount of time in senconds for a device to be considered dropped
 # without hearing a heartbeat
-heartbeat_timeout_secs = 10
+heartbeat_timeout_secs: 10
