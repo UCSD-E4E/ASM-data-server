@@ -33,7 +33,7 @@ class ServerConfig:
 
     def __init__(self, path: str) -> None:
         self._log = logging.getLogger()
-        self.heartbeat_timeout = None
+        self._heartbeat_timeout = None
         with open(path, 'r') as config_stream:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
@@ -210,9 +210,9 @@ class ClientHandler:
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
 
-        if self.heartbeat_timeout is not None:
-            self.heartbeat_timeout.cancel()
-        self.heartbeat_timeout = asyncio.create_task(self.outage_timeout_task())
+        if self._heartbeat_timeout is not None:
+            self._heartbeat_timeout.cancel()
+        self._heartbeat_timeout = asyncio.create_task(self.outage_timeout_task())
 
 
     async def onRTPStart(self, packet: codec.binaryPacket):
