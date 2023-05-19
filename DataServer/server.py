@@ -185,8 +185,8 @@ class ClientHandler:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
     async def send_outage_alert(self):
-        print("There was an outage")
-        print("TODO: Send email")
+        self._log.info('There was an outage')
+        self._log.info('TODO: Send email')
 
     async def outage_timeout_task(self):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
