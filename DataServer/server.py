@@ -188,7 +188,7 @@ class ClientHandler:
     async def send_outage_alert(self):
         self._log.info('There was an outage')
         self._log.info('TODO: Send email')
-        send_email = asyncio.create_task(self.send_email)
+        send_email = asyncio.create_task(self.send_email())
 
     async def outage_timeout_task(self):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
