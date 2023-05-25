@@ -20,7 +20,6 @@ from asm_protocol import codec
 import DataServer
 from DataServer import devices
 from DataServer.portAllocator import PortAllocator
-from DataServer import outage
 
 
 class ServerConfig:
