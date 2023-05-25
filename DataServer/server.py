@@ -68,7 +68,7 @@ class ServerConfig:
 class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
-                 writer: StreamWriter, config: ServerConfig) -> None:
+                 writer: StreamWriter, config: ServerConfig, on_outage=None) -> None:
         self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
@@ -93,6 +93,7 @@ class ClientHandler:
         self._data_endpoints: Dict[Tuple[int, int], Optional[BinaryIO]] = {}
 
         self._config = config
+        self._on_outage = on_outage
 
         self.hasClient = asyncio.Event()
 
@@ -196,7 +197,9 @@ class ClientHandler:
 
     async def outage_timeout_task(self, client_uuid):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
-        asyncio.create_task(self.outage_handler())
+        outage_task = asyncio.create_task(self.outage_handler())
+        if self._on_outage is not None:
+            self._on_outage(client_uuid, outage_task)
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
