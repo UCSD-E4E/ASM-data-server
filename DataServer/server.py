@@ -190,6 +190,7 @@ class ClientHandler:
     async def outage_timeout_task(self, client_uuid):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
         new_outage = outage.OutageHandler(client_uuid, self.outage_email_interval_secs)
+        asyncio.create_task(new_outage.run())
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
