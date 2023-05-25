@@ -188,6 +188,7 @@ class ClientHandler:
     async def send_outage_alert(self):
         self._log.info('There was an outage')
         self._log.info('TODO: Send email')
+        send_email = asyncio.create_task(self.send_email)
 
     async def outage_timeout_task(self):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
@@ -288,7 +289,7 @@ class ClientHandler:
         self._data_endpoints[file_key] = open(file_path, 'ab')
         self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
 
-    def send_email(self):
+    async def send_email(self):
         gmail_user = 'asm.e4e.test.mail@gmail.com'
         gmail_password = 'vibqniwadzsbnyir'
 
