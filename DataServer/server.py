@@ -186,7 +186,7 @@ class ClientHandler:
         with open(file_path, 'a') as dataFile:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
-    async def send_email():
+    async def send_email(self):
         self._log.warning("TODO: Send email outage email")
 
     async def outage_handler(self):
@@ -196,7 +196,6 @@ class ClientHandler:
 
     async def outage_timeout_task(self, client_uuid):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
-        new_outage = outage.OutageHandler(client_uuid, self.outage_email_interval_secs)
         asyncio.create_task(self.outage_handler())
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
