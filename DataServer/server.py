@@ -20,6 +20,7 @@ from asm_protocol import codec
 import DataServer
 from DataServer import devices
 from DataServer.portAllocator import PortAllocator
+from DataServer import outage
 
 
 class ServerConfig:
@@ -30,6 +31,7 @@ class ServerConfig:
         'video_increment': int,
         'rtsp_port_block': list,
         'heartbeat_timeout_secs': float,
+        'outage_email_interval_secs': float,
     }
 
     def __init__(self, path: str) -> None:
@@ -61,6 +63,7 @@ class ServerConfig:
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
         self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
+        self.outage_email_interval_secs = float(configDict['outage_email_interval_secs'])
 
 
 class ClientHandler:
@@ -184,13 +187,9 @@ class ClientHandler:
         with open(file_path, 'a') as dataFile:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
-    async def send_outage_alert(self):
-        self._log.info('There was an outage')
-        self._log.info('TODO: Send email')
-
-    async def outage_timeout_task(self):
+    async def outage_timeout_task(self, client_uuid):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
-        await self.send_outage_alert()
+        new_outage = outage.OutageHandler(client_uuid, self.outage_email_interval_secs)
 
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
@@ -213,7 +212,7 @@ class ClientHandler:
 
         if self._heartbeat_timeout is not None:
             self._heartbeat_timeout.cancel()
-        self._heartbeat_timeout = asyncio.create_task(self.outage_timeout_task())
+        self._heartbeat_timeout = asyncio.create_task(self.outage_timeout_task(client_uuid))
 
 
     async def onRTPStart(self, packet: codec.binaryPacket):
