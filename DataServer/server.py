@@ -192,7 +192,7 @@ class ClientHandler:
     async def outage_handler(self):
         while True:
             await self.send_email()
-            await asyncio.sleep(self.outage_email_interval_secs)
+            await asyncio.sleep(self._config.outage_email_interval_secs)
 
     async def outage_timeout_task(self, client_uuid):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
