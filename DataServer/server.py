@@ -9,6 +9,7 @@ import subprocess
 import sys
 import uuid
 import smtplib
+from email.message import EmailMessage
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
 from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
@@ -300,19 +301,25 @@ class ClientHandler:
         subject = 'Node unconnected'
         body = 'Node #1 is unconnected from network!'
 
-        email_text = """\
-        From: %s
-        To: %s
-        Subject: %s
+        # email_text = """\
+        # From: %s
+        # To: %s
+        # Subject: %s
 
-        %s
-        """ % (sent_from, ", ".join(to), subject, body)
+        # %s
+        # """ % (sent_from, ", ".join(to), subject, body)
+        email_text = EmailMessage()
+        email_text.set_content(body)
+        email_text['Subject'] = subject
+        email_text['From'] = sent_from
+        email_text['To'] = ', '.join(to)
 
         try:
             smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
             smtp_server.ehlo()
             smtp_server.login(gmail_user, gmail_password)
-            smtp_server.sendmail(sent_from, to, email_text)
+            # smtp_server.sendmail(sent_from, to, email_text)
+            smtp_server.send_message(email_text)
             smtp_server.close()
             self._log.info ("Email sent successfully!")
         except Exception as ex:
