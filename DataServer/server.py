@@ -35,7 +35,6 @@ class ServerConfig:
 
     def __init__(self, path: str) -> None:
         self._log = logging.getLogger()
-        self._heartbeat_timeout = None
         with open(path, 'r') as config_stream:
             configDict = yaml.safe_load(config_stream)
             self.__load_config(configDict=configDict)
@@ -69,6 +68,7 @@ class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
                  writer: StreamWriter, config: ServerConfig) -> None:
+        self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
         self.reader = reader
@@ -186,8 +186,9 @@ class ClientHandler:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
     async def send_outage_alert(self):
-        print("There was an outage")
-        print("TODO: Send email")
+        self._log.info('There was an outage')
+        self._log.info('TODO: Send email')
+        send_email = asyncio.create_task(self.send_email)
 
     async def outage_timeout_task(self):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
@@ -288,7 +289,7 @@ class ClientHandler:
         self._data_endpoints[file_key] = open(file_path, 'ab')
         self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
 
-    def send_email(self):
+    async def send_email(self):
         gmail_user = 'asm.e4e.test.mail@gmail.com'
         gmail_password = 'vibqniwadzsbnyir'
 
