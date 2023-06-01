@@ -68,7 +68,7 @@ class ServerConfig:
 class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
-                 writer: StreamWriter, config: ServerConfig, on_outage=None) -> None:
+                 writer: StreamWriter, config: ServerConfig) -> None:
         self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
@@ -93,7 +93,6 @@ class ClientHandler:
         self._data_endpoints: Dict[Tuple[int, int], Optional[BinaryIO]] = {}
 
         self._config = config
-        self._on_outage = on_outage
 
         self.hasClient = asyncio.Event()
 
@@ -187,20 +186,6 @@ class ClientHandler:
         with open(file_path, 'a') as dataFile:
             dataFile.write(f'{packet.timestamp.isoformat()}, {packet.label}\n')
 
-    async def send_email(self):
-        self._log.warning("TODO: Send email outage email")
-
-    async def outage_handler(self):
-        while True:
-            await self.send_email()
-            await asyncio.sleep(self._config.outage_email_interval_secs)
-
-    async def outage_timeout_task(self, client_uuid):
-        await asyncio.sleep(self._config.heartbeat_timeout_secs)
-        outage_task = asyncio.create_task(self.outage_handler())
-        if self._on_outage is not None:
-            self._on_outage(client_uuid, outage_task)
-
     async def heartbeat_handler(self, packet: codec.binaryPacket):
         assert(isinstance(packet, codec.E4E_Heartbeat))
         client_uuid = packet._source
@@ -219,11 +204,6 @@ class ClientHandler:
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         self.hasClient.set()
-
-        if self._heartbeat_timeout is not None:
-            self._heartbeat_timeout.cancel()
-        self._heartbeat_timeout = asyncio.create_task(self.outage_timeout_task(client_uuid))
-
 
     async def onRTPStart(self, packet: codec.binaryPacket):
         self._log.info("Got RTP Start Command")
@@ -311,7 +291,7 @@ class Server:
             git_rev_parse += ' dirty'
         return git_rev_parse
 
-    def __init__(self, config_file: str) -> None:
+    def __init__(self, config_file: str, report_outage: Optional[Callable[[devices.Device], None]] = None) -> None:
         self._log = logging.getLogger(self.__class__.__name__)
         self._log.info(f"Starting ASM Data Server v{DataServer.__version__}, {self.__getRevision()}")
         self.config = ServerConfig(config_file)
@@ -319,13 +299,18 @@ class Server:
         self.device_tree = devices.DeviceTree(devices_file)
         self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
+        self._report_outage = report_outage
 
     async def run(self):
         self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
+
         server = await asyncio.start_server(self.client_thread, self.hostname,
                                             self.config.port)
+        outage_detector = asyncio.create_task(self.start_outage_detector())
         async with server:
             await server.serve_forever()
+
+        outage_detector.cancel()
 
     async def client_thread(self, reader: StreamReader, writer: StreamWriter):
         client = ClientHandler(device_tree=self.device_tree, reader=reader,
@@ -333,6 +318,26 @@ class Server:
         self.__client_queues.append(client)
         await client.run()
         self.__client_queues.remove(client)
+
+    async def start_outage_detector(self):
+        while True:
+            if self._report_outage is None:
+                # Just in case _report_outage is set after starting this task,
+                # we'll keep the task alive
+                continue
+
+            for client in self.__client_queues:
+                if client.client_device is None or client.client_device.last_comms is None:
+                    # The client may not have connected yet, or the connect 
+                    # might never connect. Since we can't tell these cases apart
+                    # here, we will ignore it for now.
+                    continue
+
+                since_last_comms = (dt.datetime.now() - client.client_device.last_comms)
+                if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
+                    self._report_outage(client.client_device)
+
+            await asyncio.sleep(self.config.outage_email_interval_secs)
 
     def checkForServices(self):
         self.__checkForFFMPEG()

@@ -30,7 +30,7 @@ class Device:
     fw_version: str = ""
     location: str = ""
     location_units: str = ""
-    _last_comms: Optional[dt.datetime] = None
+    last_comms: Optional[dt.datetime] = None
 
     def getDevicePath(self):
         # if self.description:
@@ -39,7 +39,7 @@ class Device:
         return f'{self.deviceID}'
 
     def setLastHeardFrom(self, t: dt.datetime):
-        self._last_comms = t
+        self.last_comms = t
 
     @classmethod
     def from_dict(cls, deviceID: uuid.UUID, **kwargs) -> Device:
