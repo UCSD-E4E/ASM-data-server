@@ -4,7 +4,7 @@ import enum
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 import pathlib
 
 import yaml
@@ -83,7 +83,7 @@ class DeviceTree:
                 yaml.safe_dump({}, stream)
         with open(path, 'r') as stream:
             tree: Optional[Dict[str, Any]] = yaml.safe_load(stream)
-        self.devices: Dict[uuid.UUID, Device] = {}
+        self.__tree: Dict[uuid.UUID, Device] = {}
         if tree is None:
             return
         if not isinstance(tree, dict):
@@ -91,23 +91,26 @@ class DeviceTree:
         for id, args in tree.items():
             deviceID = uuid.UUID(id)
             device = Device.from_dict(deviceID=deviceID, **args)
-            self.devices[deviceID] = device
+            self.__tree[deviceID] = device
         self.__path = path
         
     def saveToDisk(self) -> None:
         device_dict: Dict[str, Dict[str, str]] = {}
-        for deviceID, device in self.devices.items():
+        for deviceID, device in self.__tree.items():
             device_dict[str(deviceID)] = device.to_dict()
         with open(self.__path, 'w') as stream:
             yaml.safe_dump(device_dict, stream)
 
     def getDeviceByUUID(self, uuid: uuid.UUID) -> Device:
-        if uuid not in self.devices:
+        if uuid not in self.__tree:
             raise DeviceNotFoundError(uuid)
-        device_node = self.devices[uuid]
+        device_node = self.__tree[uuid]
         return device_node
 
     def addDevice(self, device: Device) -> None:
-        self.devices[device.deviceID] = device
+        self.__tree[device.deviceID] = device
         self.saveToDisk()
+
+    def getDevices(self) -> Iterable[Device]:
+        return self.__tree.values()
 

@@ -300,6 +300,7 @@ class Server:
         self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
         self._report_outage = report_outage
+        self._outages: Dict[uuid.UUID, asyncio.Task] = {}
 
     async def run(self):
         self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
@@ -325,7 +326,7 @@ class Server:
             return
 
         while True:
-            for device in self.device_tree.devices.values():
+            for device in self.device_tree.getDevices():
                 if device.last_comms is None:
                     # The device may not have connected yet, or the connect 
                     # might never connect. Since we can't tell these cases apart
@@ -334,8 +335,14 @@ class Server:
 
                 since_last_comms = dt.datetime.now() - device.last_comms
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
-                    self._report_outage(device)
+                    self._outages[device.deviceID] = asyncio.create_task(self.outage_handler(device))
 
+            await asyncio.sleep(self.config.outage_email_interval_secs)
+
+    async def outage_handler(self, device: devices.Device):
+        while True:
+            if self._report_outage is not None:
+                self._report_outage(device)
             await asyncio.sleep(self.config.outage_email_interval_secs)
 
     def checkForServices(self):
