@@ -320,22 +320,21 @@ class Server:
         self.__client_queues.remove(client)
 
     async def start_outage_detector(self):
-        while True:
-            if self._report_outage is None:
-                # Just in case _report_outage is set after starting this task,
-                # we'll keep the task alive
-                continue
+        if self._report_outage is None:
+            self._log.warn('Outage detector not started: outage reporter not supplied')
+            return
 
-            for client in self.__client_queues:
-                if client.client_device is None or client.client_device.last_comms is None:
-                    # The client may not have connected yet, or the connect 
+        while True:
+            for device in self.device_tree.devices.values():
+                if device.last_comms is None:
+                    # The device may not have connected yet, or the connect 
                     # might never connect. Since we can't tell these cases apart
                     # here, we will ignore it for now.
                     continue
 
-                since_last_comms = (dt.datetime.now() - client.client_device.last_comms)
+                since_last_comms = dt.datetime.now() - device.last_comms
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
-                    self._report_outage(client.client_device)
+                    self._report_outage(device)
 
             await asyncio.sleep(self.config.outage_email_interval_secs)
 
