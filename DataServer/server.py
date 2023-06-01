@@ -333,6 +333,9 @@ class Server:
                     # here, we will ignore it for now.
                     continue
 
+                if device.deviceID in self._outages:
+                    continue
+
                 since_last_comms = dt.datetime.now() - device.last_comms
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
                     self._outages[device.deviceID] = asyncio.create_task(self.outage_handler(device))
