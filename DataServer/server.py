@@ -68,7 +68,8 @@ class ServerConfig:
 class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
-                 writer: StreamWriter, config: ServerConfig) -> None:
+                 writer: StreamWriter, config: ServerConfig, 
+                 on_first_contact: Optional[Callable[[devices.Device], None]] = None) -> None:
         self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
@@ -78,6 +79,7 @@ class ClientHandler:
         self.end_event = Event()
         self.__packet_queue: asyncio.Queue[Optional[codec.binaryPacket]] = \
             asyncio.Queue()
+        self._on_first_contact = on_first_contact
 
         self._packet_handlers: Dict[Type[codec.binaryPacket],
                                     Callable[[codec.binaryPacket],
@@ -203,6 +205,10 @@ class ClientHandler:
         self._log.info(f"Got heartbeat from {self.client_device.deviceID} "
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
+        
+        if not self.hasClient.is_set() and self._on_first_contact:
+            self._on_first_contact(self.client_device)
+
         self.hasClient.set()
 
     async def onRTPStart(self, packet: codec.binaryPacket):
@@ -315,10 +321,15 @@ class Server:
 
     async def client_thread(self, reader: StreamReader, writer: StreamWriter):
         client = ClientHandler(device_tree=self.device_tree, reader=reader,
-                               writer=writer, config=self.config)
+                               writer=writer, config=self.config,
+                               on_first_contact=self.on_device_first_contact)
         self.__client_queues.append(client)
         await client.run()
         self.__client_queues.remove(client)
+
+    def on_device_first_contact(self, device: devices.Device):
+        if device.deviceID in self._outages:
+            self._outages[device.deviceID].cancel()
 
     async def start_outage_detector(self):
         if self._report_outage is None:
