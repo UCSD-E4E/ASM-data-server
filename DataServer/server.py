@@ -30,7 +30,7 @@ class ServerConfig:
         'video_increment': int,
         'rtsp_port_block': list,
         'heartbeat_timeout_secs': float,
-        'outage_email_interval_secs': float,
+        'outage_report_interval_secs': float,
     }
 
     def __init__(self, path: str) -> None:
@@ -62,7 +62,7 @@ class ServerConfig:
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
         self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
-        self.outage_email_interval_secs = float(configDict['outage_email_interval_secs'])
+        self.outage_report_interval_secs = float(configDict['outage_report_interval_secs'])
 
 
 class ClientHandler:
@@ -340,13 +340,13 @@ class Server:
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
                     self._outages[device.deviceID] = asyncio.create_task(self.outage_handler(device))
 
-            await asyncio.sleep(self.config.outage_email_interval_secs)
+            await asyncio.sleep(self.config.outage_report_interval_secs)
 
     async def outage_handler(self, device: devices.Device):
         while True:
             if self._report_outage is not None:
                 self._report_outage(device)
-            await asyncio.sleep(self.config.outage_email_interval_secs)
+            await asyncio.sleep(self.config.outage_report_interval_secs)
 
     def checkForServices(self):
         self.__checkForFFMPEG()
