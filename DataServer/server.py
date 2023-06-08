@@ -331,6 +331,10 @@ class Server:
         self.__client_queues.remove(client)
 
     def on_device_timeout(self, device: devices.Device):
+        if self._report_outage:
+            self._report_outage(device)
+        else:
+            self._log.warn(f'Device {device.deviceID} went offline but had no report outage hook')
         device.offline = True
 
     def on_device_connect(self, device: devices.Device):
