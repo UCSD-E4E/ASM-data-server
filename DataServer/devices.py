@@ -33,7 +33,7 @@ class Device:
     location: str = ""
     location_units: str = ""
     last_comms: Optional[dt.datetime] = None
-    offline: bool = False
+    offline: bool = True
     on_timeout: Optional[Callable[[devices.Device], None]] = None
     on_connect: Optional[Callable[[devices.Device], None]] = None
 
