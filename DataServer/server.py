@@ -328,7 +328,7 @@ class Server:
         while True:
             for device in self.device_tree.getDevices():
                 if device.last_comms is None:
-                    # The device may not have connected yet, or the connect 
+                    # The device may not have connected yet, or the device 
                     # might never connect. Since we can't tell these cases apart
                     # here, we will ignore it for now.
                     continue
