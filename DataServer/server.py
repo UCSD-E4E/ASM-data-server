@@ -30,7 +30,6 @@ class ServerConfig:
         'video_increment': int,
         'rtsp_port_block': list,
         'heartbeat_timeout_secs': float,
-        'outage_report_interval_secs': float,
     }
 
     def __init__(self, path: str) -> None:
@@ -62,14 +61,13 @@ class ServerConfig:
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
         self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
-        self.outage_report_interval_secs = float(configDict['outage_report_interval_secs'])
 
 
 class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
                  writer: StreamWriter, config: ServerConfig, 
-                 on_first_contact: Optional[Callable[[devices.Device], None]] = None) -> None:
+                 setup_device: Optional[Callable[[devices.Device], None]] = None) -> None:
         self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
@@ -79,7 +77,7 @@ class ClientHandler:
         self.end_event = Event()
         self.__packet_queue: asyncio.Queue[Optional[codec.binaryPacket]] = \
             asyncio.Queue()
-        self._on_first_contact = on_first_contact
+        self._setup_device = setup_device
 
         self._packet_handlers: Dict[Type[codec.binaryPacket],
                                     Callable[[codec.binaryPacket],
@@ -197,6 +195,8 @@ class ClientHandler:
                 self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
             except devices.DeviceNotFoundError as e:
                 newDevice = devices.Device(client_uuid, "Auto-registered device", devices.DeviceType.AUTO_REGISTERED)
+                if self._setup_device:
+                    self._setup_device(newDevice)
                 self.device_tree.addDevice(newDevice)
                 self.client_device = newDevice
                 self._log.info(f"Added new device {newDevice}")
@@ -206,8 +206,8 @@ class ClientHandler:
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
         
-        if not self.hasClient.is_set() and self._on_first_contact:
-            self._on_first_contact(self.client_device)
+        if not self.hasClient.is_set() and self.client_device.on_connect:
+            self.client_device.on_connect(self.client_device)
 
         self.hasClient.set()
 
@@ -322,20 +322,22 @@ class Server:
     async def client_thread(self, reader: StreamReader, writer: StreamWriter):
         client = ClientHandler(device_tree=self.device_tree, reader=reader,
                                writer=writer, config=self.config,
-                               on_first_contact=self.on_device_first_contact)
+                               setup_device=self.setup_device)
         self.__client_queues.append(client)
         await client.run()
         self.__client_queues.remove(client)
 
-    def on_device_first_contact(self, device: devices.Device):
-        if device.deviceID in self._outages:
-            self._outages[device.deviceID].cancel()
+    def on_device_timeout(self, device: devices.Device):
+        device.offline = True
+
+    def on_device_connect(self, device: devices.Device):
+        device.offline = False
+
+    def setup_device(self, device: devices.Device):
+        device.on_timeout = self.on_device_timeout
+        device.on_connect = self.on_device_connect
 
     async def start_outage_detector(self):
-        if self._report_outage is None:
-            self._log.warn('Outage detector not started: missing reporter')
-            return
-
         while True:
             for device in self.device_tree.getDevices():
                 if device.last_comms is None:
@@ -349,15 +351,12 @@ class Server:
 
                 since_last_comms = dt.datetime.now() - device.last_comms
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
-                    self._outages[device.deviceID] = asyncio.create_task(self.outage_handler(device))
+                    if device.on_timeout:
+                        device.on_timeout(device)
+                    else:
+                        self._log.warn(f'Device {device.deviceID} went offline but had no timeout hook')
 
-            await asyncio.sleep(self.config.outage_report_interval_secs)
-
-    async def outage_handler(self, device: devices.Device):
-        while True:
-            if self._report_outage is not None:
-                self._report_outage(device)
-            await asyncio.sleep(self.config.outage_report_interval_secs)
+            await asyncio.sleep(self.config.heartbeat_timeout_secs)
 
     def checkForServices(self):
         self.__checkForFFMPEG()

@@ -55,7 +55,7 @@ def main():
         elif os.path.isfile(user_config):
             server = Server(user_config, report_outage)
         else:
-            server = Server('asm_config.yaml')
+            server = Server('asm_config.yaml', report_outage)
     except Exception as e:
         root_logger.exception(f"Failed to create server: {e}")
         return

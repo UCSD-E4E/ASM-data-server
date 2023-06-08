@@ -4,10 +4,12 @@ import enum
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 import pathlib
 
 import yaml
+
+from DataServer import devices
 
 
 class DeviceType(enum.Enum):
@@ -31,6 +33,9 @@ class Device:
     location: str = ""
     location_units: str = ""
     last_comms: Optional[dt.datetime] = None
+    offline: bool = False
+    on_timeout: Optional[Callable[[devices.Device], None]] = None
+    on_connect: Optional[Callable[[devices.Device], None]] = None
 
     def getDevicePath(self):
         # if self.description:
