@@ -308,6 +308,9 @@ class Server:
         self._report_outage = report_outage
         self._outages: Dict[uuid.UUID, asyncio.Task] = {}
 
+        for device in self.device_tree.getDevices():
+            self.setup_device(device)
+
     async def run(self):
         self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
 
