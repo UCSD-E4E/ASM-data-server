@@ -306,7 +306,6 @@ class Server:
         self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
         self._report_outage = report_outage
-        self._outages: Dict[uuid.UUID, asyncio.Task] = {}
 
         for device in self.device_tree.getDevices():
             self.setup_device(device)
@@ -351,9 +350,6 @@ class Server:
                     # The device may not have connected yet, or the device 
                     # might never connect. Since we can't tell these cases apart
                     # here, we will ignore it for now.
-                    continue
-
-                if device.deviceID in self._outages:
                     continue
 
                 # No need to check outages on disconnected devices
