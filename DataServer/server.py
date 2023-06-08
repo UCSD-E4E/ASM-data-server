@@ -356,6 +356,10 @@ class Server:
                 if device.deviceID in self._outages:
                     continue
 
+                # No need to check outages on disconnected devices
+                if device.offline:
+                    continue
+
                 since_last_comms = dt.datetime.now() - device.last_comms
                 if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
                     if device.on_timeout:
