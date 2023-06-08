@@ -8,6 +8,7 @@ import time
 import appdirs
 
 from DataServer.server import Server
+from DataServer.devices import Device
 
 def main():
     os.environ['XDG_CONFIG_DIRS'] = '/usr/local/etc'
@@ -41,17 +42,20 @@ def main():
     root_logger.addHandler(console_handler)
     logging.Formatter.converter = time.gmtime
 
+    def report_outage(device: Device):
+        root_logger.warn(f'There was an outage: device {device.deviceID} went offline')
+
     site_config = os.path.join(appdirs.site_config_dir(
         app_name, app_author), 'asm_config.yaml')
     user_config = os.path.join(appdirs.user_config_dir(
         app_name, app_author), 'asm_config.yaml')
     try:
         if os.path.isfile(site_config):
-            server = Server(site_config)
+            server = Server(site_config, report_outage)
         elif os.path.isfile(user_config):
-            server = Server(user_config)
+            server = Server(user_config, report_outage)
         else:
-            server = Server('asm_config.yaml')
+            server = Server('asm_config.yaml', report_outage)
     except Exception as e:
         root_logger.exception(f"Failed to create server: {e}")
         return

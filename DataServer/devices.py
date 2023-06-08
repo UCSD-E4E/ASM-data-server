@@ -4,10 +4,12 @@ import enum
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 import pathlib
 
 import yaml
+
+from DataServer import devices
 
 
 class DeviceType(enum.Enum):
@@ -30,7 +32,10 @@ class Device:
     fw_version: str = ""
     location: str = ""
     location_units: str = ""
-    _last_comms: Optional[dt.datetime] = None
+    last_comms: Optional[dt.datetime] = None
+    offline: bool = True
+    on_timeout: Optional[Callable[[devices.Device], None]] = None
+    on_connect: Optional[Callable[[devices.Device], None]] = None
 
     def getDevicePath(self):
         # if self.description:
@@ -39,7 +44,7 @@ class Device:
         return f'{self.deviceID}'
 
     def setLastHeardFrom(self, t: dt.datetime):
-        self._last_comms = t
+        self.last_comms = t
 
     @classmethod
     def from_dict(cls, deviceID: uuid.UUID, **kwargs) -> Device:
@@ -110,4 +115,7 @@ class DeviceTree:
     def addDevice(self, device: Device) -> None:
         self.__tree[device.deviceID] = device
         self.saveToDisk()
+
+    def getDevices(self) -> Iterable[Device]:
+        return self.__tree.values()
 

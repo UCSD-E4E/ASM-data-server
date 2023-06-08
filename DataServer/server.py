@@ -29,6 +29,7 @@ class ServerConfig:
         'server_uuid': str,
         'video_increment': int,
         'rtsp_port_block': list,
+        'heartbeat_timeout_secs': float,
     }
 
     def __init__(self, path: str) -> None:
@@ -59,12 +60,15 @@ class ServerConfig:
         self.uuid = uuid.UUID(configDict['server_uuid'])
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
+        self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
 
 
 class ClientHandler:
 
     def __init__(self, device_tree: devices.DeviceTree, reader: StreamReader,
-                 writer: StreamWriter, config: ServerConfig) -> None:
+                 writer: StreamWriter, config: ServerConfig, 
+                 setup_device: Optional[Callable[[devices.Device], None]] = None) -> None:
+        self._heartbeat_timeout = None
         self._log = logging.getLogger(self.__class__.__name__)
         self.device_tree = device_tree
         self.reader = reader
@@ -73,6 +77,7 @@ class ClientHandler:
         self.end_event = Event()
         self.__packet_queue: asyncio.Queue[Optional[codec.binaryPacket]] = \
             asyncio.Queue()
+        self._setup_device = setup_device
 
         self._packet_handlers: Dict[Type[codec.binaryPacket],
                                     Callable[[codec.binaryPacket],
@@ -190,6 +195,8 @@ class ClientHandler:
                 self.client_device = self.device_tree.getDeviceByUUID(client_uuid)
             except devices.DeviceNotFoundError as e:
                 newDevice = devices.Device(client_uuid, "Auto-registered device", devices.DeviceType.AUTO_REGISTERED)
+                if self._setup_device:
+                    self._setup_device(newDevice)
                 self.device_tree.addDevice(newDevice)
                 self.client_device = newDevice
                 self._log.info(f"Added new device {newDevice}")
@@ -198,6 +205,10 @@ class ClientHandler:
         self._log.info(f"Got heartbeat from {self.client_device.deviceID} "
               f"({self.client_device.description}) at {packet.timestamp}")
         self.client_device.setLastHeardFrom(dt.datetime.now())
+        
+        if not self.hasClient.is_set() and self.client_device.on_connect:
+            self.client_device.on_connect(self.client_device)
+
         self.hasClient.set()
 
     async def onRTPStart(self, packet: codec.binaryPacket):
@@ -286,7 +297,7 @@ class Server:
             git_rev_parse += ' dirty'
         return git_rev_parse
 
-    def __init__(self, config_file: str) -> None:
+    def __init__(self, config_file: str, report_outage: Optional[Callable[[devices.Device], None]] = None) -> None:
         self._log = logging.getLogger(self.__class__.__name__)
         self._log.info(f"Starting ASM Data Server v{DataServer.__version__}, {self.__getRevision()}")
         self.config = ServerConfig(config_file)
@@ -294,20 +305,65 @@ class Server:
         self.device_tree = devices.DeviceTree(devices_file)
         self.hostname = ''
         self.__client_queues: List[ClientHandler] = []
+        self._report_outage = report_outage
+
+        for device in self.device_tree.getDevices():
+            self.setup_device(device)
 
     async def run(self):
         self._log.info(f'Connecting to {self.hostname}:{self.config.port}')
+
         server = await asyncio.start_server(self.client_thread, self.hostname,
                                             self.config.port)
+        outage_detector = asyncio.create_task(self.start_outage_detector())
         async with server:
             await server.serve_forever()
 
+        outage_detector.cancel()
+
     async def client_thread(self, reader: StreamReader, writer: StreamWriter):
         client = ClientHandler(device_tree=self.device_tree, reader=reader,
-                               writer=writer, config=self.config)
+                               writer=writer, config=self.config,
+                               setup_device=self.setup_device)
         self.__client_queues.append(client)
         await client.run()
         self.__client_queues.remove(client)
+
+    def on_device_timeout(self, device: devices.Device):
+        if self._report_outage:
+            self._report_outage(device)
+        else:
+            self._log.warn(f'Device {device.deviceID} went offline but had no report outage hook')
+        device.offline = True
+
+    def on_device_connect(self, device: devices.Device):
+        device.offline = False
+
+    def setup_device(self, device: devices.Device):
+        device.on_timeout = self.on_device_timeout
+        device.on_connect = self.on_device_connect
+
+    async def start_outage_detector(self):
+        while True:
+            for device in self.device_tree.getDevices():
+                if device.last_comms is None:
+                    # The device may not have connected yet, or the device 
+                    # might never connect. Since we can't tell these cases apart
+                    # here, we will ignore it for now.
+                    continue
+
+                # No need to check outages on disconnected devices
+                if device.offline:
+                    continue
+
+                since_last_comms = dt.datetime.now() - device.last_comms
+                if since_last_comms.total_seconds() > self.config.heartbeat_timeout_secs:
+                    if device.on_timeout:
+                        device.on_timeout(device)
+                    else:
+                        self._log.warn(f'Device {device.deviceID} went offline but had no timeout hook')
+
+            await asyncio.sleep(self.config.heartbeat_timeout_secs)
 
     def checkForServices(self):
         self.__checkForFFMPEG()
