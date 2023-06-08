@@ -322,7 +322,7 @@ class Server:
 
     async def start_outage_detector(self):
         if self._report_outage is None:
-            self._log.warn('Outage detector not started: outage reporter not supplied')
+            self._log.warn('Outage detector not started: missing reporter')
             return
 
         while True:
