@@ -1,7 +1,10 @@
 from __future__ import annotations
-from enum import Enum, auto
+
+import logging
 import socket
+from enum import Enum, auto
 from typing import Dict
+
 
 class PortAllocator:
     """This class provides a method to allocate the next available port in the
@@ -23,6 +26,7 @@ class PortAllocator:
 
         self.__start = block_start
         self.__end = block_end
+        self.__log.info('Starting with unknown port statuses in [%d, %d]', self.__start, self.__end)
 
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("8.8.8.8", 80))
@@ -30,6 +34,10 @@ class PortAllocator:
 
         self.__portDict: Dict[int, PortAllocator.PortStatus] = {i:PortAllocator.PortStatus.UNKNOWN for i in range(block_start, block_end)}
         self.__reservedPorts: Dict[int, socket.socket] = {}
+
+    @property
+    def __log(self) -> logging.Logger:
+        return logging.getLogger('Port Allocator')
 
     def __isOpen(self, port:int) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -53,25 +61,34 @@ class PortAllocator:
             int: Next available port number
         """
         free_ports = [port for port, status in self.__portDict.items() if status == PortAllocator.PortStatus.RELEASED]
+        self.__log.debug('Discovered %d free ports', len(free_ports))
         for port in free_ports:
             assert(port in self.__reservedPorts)
             self.__reservedPorts[port].close()
             self.__reservedPorts.pop(port)
             self.__portDict[port] = PortAllocator.PortStatus.RESERVED
+            self.__log.info('Reserving port %d', port)
             return port
         
         unknown_ports = [port for port, status in self.__portDict.items() if status == PortAllocator.PortStatus.UNKNOWN]
+        self.__log.debug('Discovered %d unknown ports', len(free_ports))
         for port in unknown_ports:
+            self.__log.debug('Trying port %d', port)
             if self.__isOpen(port):
                 self.__portDict[port] = PortAllocator.PortStatus.RESERVED
+                self.__log.info('Reserving port %d', port)
                 return port
             else:
                 self.__portDict[port] = PortAllocator.PortStatus.USED
+                self.__log.debug('port %d is busy', port)
         
         used_ports = [port for port, status in self.__portDict.items() if status == PortAllocator.PortStatus.USED]
+        self.__log.debug('Discovered %d used ports', len(free_ports))
         for port in used_ports:
+            self.__log.debug('Checking port %d', port)
             if self.__isOpen(port):
                 self.__portDict[port] = PortAllocator.PortStatus.RESERVED
+                self.__log.info('Reserving port %d', port)
                 return port
         
         raise RuntimeError("No free ports")
@@ -88,15 +105,17 @@ class PortAllocator:
             port (int): Port to release
         """
 
+        self.__log.info('Releasing port %d', port)
         if port > self.__end or port < self.__start:
             raise RuntimeError('Invalid port')
         if port in self.__reservedPorts:
             raise RuntimeError("Double free on port!")
-        self.__reservedPorts[port] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__reservedPorts[port].bind((self.__ip, port))
-        self.__reservedPorts[port].listen(1)
+        try:
+            self.__reservedPorts[port] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.__reservedPorts[port].bind((self.__ip, port))
+            self.__reservedPorts[port].listen(1)
+        except OSError as exc:
+            self.__log.exception("Failed to reserve port %d", port)
+            raise exc
         self.__portDict[port] = PortAllocator.PortStatus.RELEASED
-        
-
-        
-        
+        self.__log.debug('Released port %d', port)
