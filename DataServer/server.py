@@ -69,6 +69,7 @@ class ClientHandler:
         self.device_tree = device_tree
         self.reader = reader
         self.writer = writer
+        self._log.info('Got reader %d and writer %d', id(reader), id(writer))
         self.protocol_codec = codec.Codec()
         self.end_event = Event()
         self.__packet_queue: asyncio.Queue[Optional[codec.binaryPacket]] = \
@@ -126,7 +127,7 @@ class ClientHandler:
                 # Do this to unblock the response_sender
                 await self.__packet_queue.put(None)
                 self.end_event.set()
-        self._log.info(f'Rx closed')
+        self._log.info('Rx %d closed', id(self.reader))
 
     async def response_sender(self):
         logger = logging.Logger("Sender")
@@ -139,7 +140,7 @@ class ClientHandler:
             self.writer.write(bytes_to_send)
             await self.writer.drain()
         self.writer.close()
-        self._log.info('Tx closed')
+        self._log.info('Tx %d closed', id(self.writer))
 
     async def sendPacket(self, packet: codec.binaryPacket):
         try:
