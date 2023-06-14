@@ -6,8 +6,10 @@ import pathlib
 import time
 
 import appdirs
+from ASM_utils.logging import configure_logging
 
 from DataServer.server import Server
+
 
 def main():
     os.environ['XDG_CONFIG_DIRS'] = '/usr/local/etc'
@@ -22,24 +24,8 @@ def main():
         log_dest = os.path.join(log_dir, 'asm_server.log')
 
     print(f"Logging to {log_dest}")
+    configure_logging()
     root_logger = logging.getLogger()
-    # Log to root to begin
-    root_logger.setLevel(logging.DEBUG)
-
-    log_file_handler = logging.handlers.RotatingFileHandler(log_dest, maxBytes=5*1024*1024, backupCount=5)
-    log_file_handler.setLevel(logging.DEBUG)
-
-    root_formatter = logging.Formatter('%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
-    log_file_handler.setFormatter(root_formatter)
-    root_logger.addHandler(log_file_handler)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARN)
-
-    error_formatter = logging.Formatter('%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
-    console_handler.setFormatter(error_formatter)
-    root_logger.addHandler(console_handler)
-    logging.Formatter.converter = time.gmtime
 
     site_config = os.path.join(appdirs.site_config_dir(
         app_name, app_author), 'asm_config.yaml')
