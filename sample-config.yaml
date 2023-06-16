@@ -23,3 +23,18 @@ rtsp_port_block: [9100, 9200]
 # The amount of time in senconds for a device to be considered dropped
 # without hearing a heartbeat
 heartbeat_timeout_secs: 10.0
+
+# This is the account of email sender.
+email_username: "YOUR EMAIL ACCOUNT"
+
+# This is the password pf email sender.
+email_password: "YOUR EMAIL PASSWORD"
+
+# This is the list of Admins email account that will receive the email.
+eamil_receiver: ['zhz049@ucsd.edu']
+
+# This is the sample email subject.
+email_subject: "Node unconnected"
+
+# This is the sample email content
+email_content: "Node is unconnected from data server"

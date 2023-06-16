@@ -8,8 +8,6 @@ import socketserver
 import subprocess
 import sys
 import uuid
-import smtplib
-from email.message import EmailMessage
 from asyncio.streams import StreamReader, StreamWriter
 from threading import Event
 from typing import (Any, Awaitable, BinaryIO, Callable, Dict, List, Optional,
@@ -22,6 +20,7 @@ from asm_protocol import codec
 import DataServer
 from DataServer import devices
 from DataServer.portAllocator import PortAllocator
+import email_sender
 
 
 class ServerConfig:
@@ -63,6 +62,7 @@ class ServerConfig:
         self.video_increment_s = int(configDict['video_increment'])
         self.rtsp_ports = PortAllocator(configDict['rtsp_port_block'][0], configDict['rtsp_port_block'][1])
         self.heartbeat_timeout_secs = float(configDict['heartbeat_timeout_secs'])
+        self.email_sender = email(logger=self._log, configDict=configDict)
 
 
 class ClientHandler:
@@ -189,7 +189,7 @@ class ClientHandler:
     async def send_outage_alert(self):
         self._log.info('There was an outage')
         self._log.info('TODO: Send email')
-        send_email = asyncio.create_task(self.send_email())
+        send_email = asyncio.create_task(self._config.email_sender.send_email())
 
     async def outage_timeout_task(self):
         await asyncio.sleep(self._config.heartbeat_timeout_secs)
@@ -289,41 +289,6 @@ class ClientHandler:
         pathlib.Path(file_dir).mkdir(parents=True, exist_ok=True)
         self._data_endpoints[file_key] = open(file_path, 'ab')
         self._log.info(f'Opened file endpoint for {file_key} at {file_path}')
-
-    async def send_email(self):
-        gmail_user = 'asm.e4e.test.mail@gmail.com'
-        gmail_password = 'vibqniwadzsbnyir'
-
-        sent_from = gmail_user
-        
-        # TODO: list of Admin users' email, read in from config file?
-        to = ['zhz049@ucsd.edu']
-        subject = 'Node unconnected'
-        body = 'Node #1 is unconnected from network!'
-
-        # email_text = """\
-        # From: %s
-        # To: %s
-        # Subject: %s
-
-        # %s
-        # """ % (sent_from, ", ".join(to), subject, body)
-        email_text = EmailMessage()
-        email_text.set_content(body)
-        email_text['Subject'] = subject
-        email_text['From'] = sent_from
-        email_text['To'] = ', '.join(to)
-
-        try:
-            smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-            smtp_server.ehlo()
-            smtp_server.login(gmail_user, gmail_password)
-            # smtp_server.sendmail(sent_from, to, email_text)
-            smtp_server.send_message(email_text)
-            smtp_server.close()
-            self._log.info ("Email sent successfully!")
-        except Exception as ex:
-            self._log.info ("Something went wrong….",ex)
 
 class Server:
     def __getRevision(self) -> str:

@@ -21,7 +21,8 @@ setup(
 		'asm_protocol @ git+https://github.com/UCSD-E4E/ASM_protocol.git',
 		'AsmCommon @ git+https://github.com/UCSD-E4E/ASM-common.git',
 		'appdirs',
-		'pytest'],
+		'pytest',
+    	'email'],
 	extras_require={
 		'dev': [
 			'pytest',
