@@ -1,6 +1,8 @@
 # ASM-data-server
 Aye-Aye Sleep Monitoring Project: Data Server Code
 
+This project is currently inactive.  If you are interested in contributing to this project, please contact Engineers for Exploration at e4e@ucsd.edu.
+
 # Instructions to Run
 ## Development
 1. Open this repository as a VS Code Workspace
